@@ -45,9 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ⌘⌥G  — return to grid (replaces Esc, which conflicts with vim/REPLs in Terminal)
         toggleHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let mods = event.modifierFlags
-            let cmdOpt = mods.contains(.command) && mods.contains(.option)
-            guard cmdOpt, !mods.contains(.control) else { return }
+            guard mods.contains(.command), mods.contains(.option), !mods.contains(.control) else { return }
             let char = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            // Early-bail on irrelevant chars so we don't dispatch every ⌘⌥<key> press.
+            guard char == "t" || char == "g" else { return }
             let shift = mods.contains(.shift)
             DispatchQueue.main.async { [weak self] in
                 guard let m = self?.manager else { return }

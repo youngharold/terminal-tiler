@@ -32,6 +32,7 @@ final class WindowManager {
         let window: AXUIElement
         var original: CGRect
         var slot: CGRect = .zero
+        var screenIdx: Int = 0
         var animationGeneration: Int = 0
         init(window: AXUIElement, original: CGRect) {
             self.window = window
@@ -204,6 +205,7 @@ final class WindowManager {
             let frames = computeGrid(count: group.count, in: screen)
             for (i, m) in group.enumerated() {
                 m.slot = frames[i]
+                m.screenIdx = idx
                 animateFrame(m, to: frames[i])
             }
         }
@@ -228,12 +230,14 @@ final class WindowManager {
 
     /// Coalesce rapid window create/destroy bursts into one refresh. The 0.15s wait also
     /// lets a brand-new Terminal window settle into its default frame before we capture it
-    /// as `original`.
+    /// as `original`. Epoch-gated so a pending refresh from a previous session can't run
+    /// inside a new one if the user toggles stop/start within the window.
     private func scheduleRefresh() {
         guard isTiling, !refreshScheduled else { return }
         refreshScheduled = true
+        let myEpoch = sessionEpoch
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.sessionEpoch == myEpoch else { return }
             self.refreshScheduled = false
             self.refreshWindows()
         }
@@ -241,12 +245,16 @@ final class WindowManager {
 
     private func zoom(_ focused: AXUIElement) {
         guard let focusedManaged = managed.first(where: { CFEqual($0.window, focused) }) else { return }
-        // Use the focused window's LIVE frame (not the cached slot) to find its current screen —
-        // handles the case where the user manually dragged a tile to another display.
+        // Suspend focus events around our own setFrame writes — Terminal can sometimes raise
+        // a sibling tab during a resize, which would re-enter handleFocusChange.
+        suspendFocus(for: 0.4)
+        // Probe the focused window's live frame ONCE (handles a manual drag to another display);
+        // every other window uses its cached screenIdx from layoutGrid to avoid N AX reads.
         let liveFocused = getFrame(focused)
         let idx = screenIndex(forAX: liveFocused)
+        focusedManaged.screenIdx = idx
         let screen = axVisibleFrame(for: idx)
-        let onScreen = managed.filter { screenIndex(forAX: getFrame($0.window)) == idx }
+        let onScreen = managed.filter { $0.screenIdx == idx }
 
         switch _zoomMode {
         case .sideStrip:
@@ -310,30 +318,30 @@ final class WindowManager {
         var pos = CGPoint.zero
         var size = CGSize.zero
         if r1 == .success, let p = posRef, CFGetTypeID(p) == AXValueGetTypeID() {
-            AXValueGetValue(p as! AXValue, .cgPoint, &pos)
+            let v = p as! AXValue
+            if AXValueGetType(v) == .cgPoint { AXValueGetValue(v, .cgPoint, &pos) }
         }
         if r2 == .success, let s = sizeRef, CFGetTypeID(s) == AXValueGetTypeID() {
-            AXValueGetValue(s as! AXValue, .cgSize, &size)
+            let v = s as! AXValue
+            if AXValueGetType(v) == .cgSize { AXValueGetValue(v, .cgSize, &size) }
         }
         return CGRect(origin: pos, size: size)
     }
 
-    private func setFrame(_ win: AXUIElement, to frame: CGRect) {
+    private func setFrame(_ win: AXUIElement, to frame: CGRect, settle: Bool = true) {
         var pos = frame.origin
         var size = frame.size
         let posVal = AXValueCreate(.cgPoint, &pos)
         let sizeVal = AXValueCreate(.cgSize, &size)
-        // pos → size → pos. The first pos move puts the window on the destination screen
-        // (resolves cross-display moves). The size write resizes in place. The final pos
-        // write corrects any clamp from Terminal's min-size or screen-edge logic. Three
-        // IPC calls per write is acceptable; AX is the bottleneck either way.
+        // Intermediate animation steps: pos + size (2 writes). Final/settle step: pos → size →
+        // pos (3 writes) so cross-display moves and Terminal min-size clamps land cleanly.
         if let posVal = posVal {
             AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, posVal)
         }
         if let sizeVal = sizeVal {
             AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
         }
-        if let posVal = posVal {
+        if settle, let posVal = posVal {
             AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, posVal)
         }
     }
@@ -342,11 +350,19 @@ final class WindowManager {
         m.animationGeneration += 1
         let myGen = m.animationGeneration
         let start = getFrame(m.window)
+        // If start ≈ target, skip animation entirely (saves ~30 AX writes per no-op step).
+        let dx = abs(target.minX - start.minX), dy = abs(target.minY - start.minY)
+        let dw = abs(target.width - start.width), dh = abs(target.height - start.height)
+        if dx + dy + dw + dh < 2 {
+            setFrame(m.window, to: target, settle: true)
+            return
+        }
         let steps = 10
         let dt = duration / Double(steps)
         for i in 1...steps {
             let t = Double(i) / Double(steps)
             let eased = 1 - pow(1 - t, 3)
+            let isFinal = (i == steps)
             DispatchQueue.main.asyncAfter(deadline: .now() + dt * Double(i)) { [weak m, weak self] in
                 guard let self = self, let m = m, m.animationGeneration == myGen else { return }
                 let f = CGRect(
@@ -355,7 +371,7 @@ final class WindowManager {
                     width: start.width + (target.width - start.width) * eased,
                     height: start.height + (target.height - start.height) * eased
                 )
-                self.setFrame(m.window, to: f)
+                self.setFrame(m.window, to: f, settle: isFinal)
             }
         }
     }
