@@ -7,8 +7,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="TerminalTiler"
 APP_DIR="$APP_NAME.app"
-VERSION="0.2.7"
-BUILD="9"
+VERSION="0.2.8"
+BUILD="10"
 
 echo "==> swift build (release, universal: arm64 + x86_64)"
 swift build -c release --arch arm64 --arch x86_64
@@ -52,6 +52,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
     <key>NSHumanReadableCopyright</key>
     <string>Local build</string>
 </dict>

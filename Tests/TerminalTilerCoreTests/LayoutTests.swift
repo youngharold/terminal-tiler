@@ -129,6 +129,21 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(Layout.screenIndex(forAX: .zero, nsScreens: []), 0)
     }
 
+    func testGrid_fractionalScreen_coversWithoutGap() {
+        // 1366×768 / 3 cols → cell width 455.333…  Make sure right edge of last col
+        // and bottom edge of last row reach the screen edges (within 1pt slack).
+        let s = CGRect(x: 0, y: 0, width: 1366, height: 768)
+        let frames = Layout.grid(count: 9, in: s)
+        XCTAssertEqual(frames.count, 9)
+        let last = frames.last!
+        // Top-left of last cell:
+        XCTAssertEqual(last.origin.x, 2 * (1366.0 / 3.0), accuracy: 0.001)
+        XCTAssertEqual(last.origin.y, 2 * (768.0 / 3.0), accuracy: 0.001)
+        // Right/bottom edges land at screen edges:
+        XCTAssertEqual(last.maxX, 1366.0, accuracy: 0.001)
+        XCTAssertEqual(last.maxY, 768.0, accuracy: 0.001)
+    }
+
     // MARK: - gridWouldBeUnreadable()
 
     func testUnreadable_belowThreshold() {

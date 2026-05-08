@@ -39,11 +39,35 @@ Click the grid icon in the menu bar:
 - **Return to Grid** / **Refresh Window List** — re-tile or re-detect windows (auto-detects most cases).
 - **Stop Tiling** — submenu with two choices: *Restore Originals* (snap each window back to its position at the moment tiling started) or *Leave Where They Are* (just stop managing in place).
 
+## Keybindings
+
+| Shortcut    | Action                                        |
+|-------------|-----------------------------------------------|
+| `⌘⌥T`       | Toggle tiling (start, or *Stop & Restore*)    |
+| `⌘⌥G`       | Return to the even grid (cancels a zoom)      |
+| `⌘⌥⇧T`      | *Stop & Leave* (windows stay where they are)  |
+
+Hotkeys are global — they fire from any app. They use `charactersIgnoringModifiers` so they map to the physical keys on Dvorak / AZERTY / QWERTZ as well as US-QWERTY.
+
 ## Notes
 
-- New Terminal windows are auto-detected and added to the grid.
-- Windows on multiple displays each tile within their own display.
-- After granting Accessibility permission, you may need to relaunch the app for observers to attach (the app will prompt with a System Settings deep-link if permission is missing).
+- New Terminal windows are auto-detected and added to the grid (~150ms after they appear).
+- Closed windows are dropped automatically; if only one Terminal window remains, tiling stops and that window is restored.
+- Windows on multiple displays tile within their own display (no cross-display merging).
+- "Restore Originals" snaps each window back to the position it had **at the moment tiling started** — not to a pre-Terminal-Tiler factory default.
+
+## Troubleshooting
+
+- **Menu bar icon is there but tiling does nothing.** Accessibility permission is denied or hasn't been granted to *this exact build* of the app. Open System Settings → Privacy & Security → Accessibility, find Terminal Tiler, toggle it off and on. The hotkey monitor retries automatically every ~1.5s — no need to restart the app.
+- **`⌘⌥T` does nothing.** Same as above — global key monitoring is gated by Accessibility.
+- **Tile button shows "Too many Terminal windows".** With more than ~16 windows on a single display the grid cells become unreadable. Move some windows to another display, or close a few.
+- **One Terminal window stays tiled fullscreen after closing siblings.** This shouldn't happen — the app stops and restores when the count drops below 2. If it does, click *Stop & Restore Originals* in the menu.
+
+## Known limitations
+
+- **Terminal.app only.** iTerm2, Ghostty, Alacritty, and Warp use different AX subroles or aren't standard windows; they aren't detected.
+- **Single-instance.** Launching a second copy will alert and quit.
+- **Ad-hoc signed.** Distributing the prebuilt `.app` outside this Mac will trip Gatekeeper. Build from source with `./build-app.sh` instead.
 
 ## Requirements
 
