@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         if manager.isTiling { manager.stopAndRestore() }
+        // AX writes are async-ish; spin the runloop briefly so restored frames actually land
+        // before the process exits. Without this, quitting mid-tile can leave windows half-restored.
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.25))
         if let m = toggleHotkeyMonitor { NSEvent.removeMonitor(m); toggleHotkeyMonitor = nil }
     }
 
@@ -41,6 +44,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerToggleHotkey() {
+        // Global key monitoring is gated by Accessibility (same TCC permission). If trust isn't
+        // granted yet, addGlobalMonitor returns silently with no events ever firing. We retry
+        // on a short timer until trust flips on, so users who grant later don't need to restart.
+        guard AXIsProcessTrusted() else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.registerToggleHotkey()
+            }
+            return
+        }
         // ⌘⌥T  — toggle tiling (start, or Stop & Restore if tiling)
         // ⌘⌥⇧T — Stop & Leave Where They Are (only meaningful while tiling)
         // ⌘⌥G  — return to grid (replaces Esc, which conflicts with vim/REPLs in Terminal)

@@ -12,11 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Pin Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
       - name: Show toolchain
         run: swift --version
 
-      - name: Build (release)
-        run: swift build -c release
+      - name: Build (release, warnings-as-errors)
+        run: swift build -c release -Xswiftc -warnings-as-errors
 
       - name: Run tests
-        run: swift test
+        run: swift test -Xswiftc -warnings-as-errors

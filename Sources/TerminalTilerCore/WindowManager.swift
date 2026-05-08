@@ -18,7 +18,7 @@ public final class WindowManager {
         get { _zoomMode }
         set {
             _zoomMode = newValue
-            UserDefaults.standard.set(newValue.rawValue, forKey: "zoomMode")
+            UserDefaults.standard.set(newValue.rawValue, forKey: Self.zoomModeKey)
             onStateChange?()
             guard isTiling else { return }
             if let last = lastFocused {
@@ -28,7 +28,8 @@ public final class WindowManager {
             }
         }
     }
-    private var _zoomMode: ZoomMode = ZoomMode(rawValue: UserDefaults.standard.string(forKey: "zoomMode") ?? "") ?? .sideStrip
+    private static let zoomModeKey = "TerminalTiler.zoomMode"
+    private var _zoomMode: ZoomMode = ZoomMode(rawValue: UserDefaults.standard.string(forKey: WindowManager.zoomModeKey) ?? "") ?? .sideStrip
 
     private final class Managed {
         let window: AXUIElement
@@ -223,6 +224,8 @@ public final class WindowManager {
     // MARK: - Layout
 
     private func layoutGrid() {
+        // Bail if the screen graph is transiently empty (e.g., display sleep / lock).
+        guard !NSScreen.screens.isEmpty else { return }
         let groups = Dictionary(grouping: managed, by: { Layout.screenIndex(forAX: $0.original) })
         suspendFocus(for: 0.4)
         for (idx, group) in groups {
@@ -287,9 +290,16 @@ public final class WindowManager {
 
         switch _zoomMode {
         case .sideStrip:
+            let others = onScreen.filter { !CFEqual($0.window, focused) }
+            // Fall back to fullScreen when strip cells would be unreadably thin
+            // (e.g. focusing one of 20 windows on a single display).
+            let stripRowMin: CGFloat = 90
+            if !others.isEmpty, screen.height / CGFloat(others.count) < stripRowMin {
+                animateFrame(focusedManaged, to: screen)
+                return
+            }
             let mainW = floor(screen.width * 0.78)
             animateFrame(focusedManaged, to: CGRect(x: screen.minX, y: screen.minY, width: mainW, height: screen.height))
-            let others = onScreen.filter { !CFEqual($0.window, focused) }
             guard !others.isEmpty else { return }
             let stripX = screen.minX + mainW
             let stripW = screen.width - mainW
