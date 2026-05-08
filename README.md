@@ -1,6 +1,8 @@
 # Terminal Tiler
 
-Menu-bar app for macOS that tiles every open Terminal.app window into a grid covering the screen. Click a tile to zoom it for typing — others tuck into a sidebar strip. Esc returns to the even grid. Stop tiling to restore each window's original frame.
+[![Test](https://github.com/youngharold/terminal-tiler/actions/workflows/test.yml/badge.svg)](https://github.com/youngharold/terminal-tiler/actions/workflows/test.yml)
+
+Menu-bar app for macOS that tiles every open Terminal.app window into a grid covering the screen. Click a tile to zoom it for typing — others tuck into a sidebar strip. ⌘⌥G returns to the even grid. Stop tiling to restore each window's original frame.
 
 ## Build
 

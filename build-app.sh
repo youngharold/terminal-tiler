@@ -7,12 +7,20 @@ cd "$(dirname "$0")"
 
 APP_NAME="TerminalTiler"
 APP_DIR="$APP_NAME.app"
-BIN_PATH=".build/release/$APP_NAME"
-VERSION="0.2.5"
-BUILD="7"
+VERSION="0.2.6"
+BUILD="8"
 
-echo "==> swift build (release)"
-swift build -c release
+echo "==> swift build (release, universal: arm64 + x86_64)"
+swift build -c release --arch arm64 --arch x86_64
+
+# When `--arch` is passed twice, SPM emits a universal binary at
+# .build/apple/Products/Release/<name>. Single-arch builds end up at
+# .build/release/<name>. Resolve whichever exists.
+if [[ -f ".build/apple/Products/Release/$APP_NAME" ]]; then
+    BIN_PATH=".build/apple/Products/Release/$APP_NAME"
+else
+    BIN_PATH=".build/release/$APP_NAME"
+fi
 
 echo "==> Assembling $APP_DIR"
 rm -rf "$APP_DIR"
