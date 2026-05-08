@@ -23,9 +23,7 @@ On first launch macOS will prompt for **Accessibility permission**. Grant it in 
 
 ## Auto-launch on login
 
-```sh
-osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/TerminalTiler.app", hidden:true}'
-```
+Click the menu bar icon → **Launch at Login**. (Uses `SMAppService` — requires the app to be installed in `/Applications`.)
 
 ## Use
 

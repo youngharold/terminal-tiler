@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import ServiceManagement
 import TerminalTilerCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -154,9 +155,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        loginItem.target = self
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(loginItem)
+
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Couldn't change Launch at Login setting"
+            alert.informativeText = "\(error.localizedDescription)\n\nMake sure Terminal Tiler is in /Applications and is allowed in System Settings → General → Login Items."
+            alert.runModal()
+        }
+        rebuildMenu()
     }
 
     @objc private func toggleTiling() { manager.toggle() }
