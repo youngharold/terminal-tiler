@@ -13,18 +13,26 @@ final class WindowManager {
     var windowCount: Int { managed.count }
 
     var zoomMode: ZoomMode {
-        get { ZoomMode(rawValue: UserDefaults.standard.string(forKey: "zoomMode") ?? "") ?? .sideStrip }
+        get { _zoomMode }
         set {
+            _zoomMode = newValue
             UserDefaults.standard.set(newValue.rawValue, forKey: "zoomMode")
             onStateChange?()
-            if isTiling { layoutGrid() }
+            guard isTiling else { return }
+            if let last = lastFocused {
+                zoom(last)
+            } else {
+                layoutGrid()
+            }
         }
     }
+    private var _zoomMode: ZoomMode = ZoomMode(rawValue: UserDefaults.standard.string(forKey: "zoomMode") ?? "") ?? .sideStrip
 
     private final class Managed {
         let window: AXUIElement
-        let original: CGRect
+        var original: CGRect
         var slot: CGRect = .zero
+        var animationGeneration: Int = 0
         init(window: AXUIElement, original: CGRect) {
             self.window = window
             self.original = original
@@ -34,17 +42,31 @@ final class WindowManager {
     private var pid: pid_t = 0
     private var terminalApp: AXUIElement?
     private var managed: [Managed] = []
+    private var subscribedWindows: [AXUIElement] = []
     private var observer: AXObserver?
     private var keyMonitorGlobal: Any?
     private var keyMonitorLocal: Any?
-    private var ignoreFocus = false
+    private var ignoreFocusCounter: Int = 0
     private var lastFocused: AXUIElement?
+
+    private var isFocusIgnored: Bool { ignoreFocusCounter > 0 }
+
+    private func suspendFocus(for duration: TimeInterval) {
+        ignoreFocusCounter += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self = self else { return }
+            self.ignoreFocusCounter = max(0, self.ignoreFocusCounter - 1)
+        }
+    }
 
     // MARK: - Public API
 
     func toggle() {
-        if isTiling { stop() } else { start() }
+        if isTiling { stopAndRestore() } else { start() }
     }
+
+    func stopAndRestore() { stop(restore: true) }
+    func stopAndLeaveInPlace() { stop(restore: false) }
 
     func retile() {
         guard isTiling else { return }
@@ -52,7 +74,6 @@ final class WindowManager {
         lastFocused = nil
     }
 
-    /// Re-scan Terminal windows; add new ones, drop closed ones, then re-tile.
     func refreshWindows() {
         guard isTiling, let axApp = terminalApp else { return }
         var winsRef: AnyObject?
@@ -60,23 +81,29 @@ final class WindowManager {
         guard let wins = winsRef as? [AXUIElement] else { return }
 
         let valid = wins.filter { isManageable($0) }
-        // Remove closed
         managed.removeAll { m in !valid.contains(where: { CFEqual($0, m.window) }) }
-        // Add new
         for w in valid where !managed.contains(where: { CFEqual($0.window, w) }) {
+            // Capture original BEFORE laying out so Stop & Restore is sane.
             let mw = Managed(window: w, original: getFrame(w))
             managed.append(mw)
             subscribeDestroy(w)
         }
-        if managed.isEmpty { stop(); return }
+        if managed.isEmpty { stop(restore: false); return }
         layoutGrid()
     }
 
     // MARK: - Lifecycle
 
     private func start() {
+        guard AXIsProcessTrusted() else {
+            showAccessibilityAlert()
+            return
+        }
         guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Terminal").first else {
-            NSSound.beep()
+            showAlert(
+                title: "Terminal isn't running",
+                body: "Open Terminal.app with at least two windows, then try again."
+            )
             return
         }
         pid = app.processIdentifier
@@ -85,9 +112,18 @@ final class WindowManager {
 
         var winsRef: AnyObject?
         AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &winsRef)
-        guard let wins = winsRef as? [AXUIElement] else { NSSound.beep(); return }
+        let wins = (winsRef as? [AXUIElement]) ?? []
         let valid = wins.filter { isManageable($0) }
-        guard !valid.isEmpty else { NSSound.beep(); return }
+
+        guard valid.count >= 2 else {
+            let body = valid.isEmpty
+                ? "Open at least two Terminal windows first."
+                : "You have only one Terminal window — open another to tile."
+            showAlert(title: "Not enough Terminal windows", body: body)
+            terminalApp = nil
+            pid = 0
+            return
+        }
 
         managed = valid.map { Managed(window: $0, original: getFrame($0)) }
 
@@ -95,9 +131,14 @@ final class WindowManager {
         let result = AXObserverCreate(pid, axCallback, &obs)
         guard result == .success, let observer = obs else {
             NSLog("AXObserverCreate failed: \(result.rawValue)")
-            isTiling = true
-            layoutGrid()
-            onStateChange?()
+            showAlert(
+                title: "Couldn't observe Terminal",
+                body: "AXObserverCreate failed (\(result.rawValue)). Try restarting Terminal.app and Terminal Tiler."
+            )
+            for m in managed { setFrame(m.window, to: m.original) }
+            managed = []
+            terminalApp = nil
+            pid = 0
             return
         }
         self.observer = observer
@@ -107,10 +148,12 @@ final class WindowManager {
         for m in managed { subscribeDestroy(m.window) }
         CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .commonModes)
 
-        // Esc returns to grid; Cmd+Opt+T toggle is registered globally in AppDelegate.
-        // Local Esc handler so our own menu/window doesn't swallow it.
+        // Esc returns to grid — only when Terminal is the frontmost app, so we don't hijack Esc elsewhere.
         keyMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 { self?.retile() }
+            guard event.keyCode == 53 else { return }
+            if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal" {
+                self?.retile()
+            }
         }
         keyMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { self?.retile() }
@@ -122,103 +165,135 @@ final class WindowManager {
         onStateChange?()
     }
 
-    private func stop() {
-        for m in managed { setFrame(m.window, to: m.original) }
+    private func stop(restore: Bool) {
+        if restore {
+            for m in managed { setFrame(m.window, to: m.original) }
+        }
         managed = []
 
         if let observer = observer, let app = terminalApp {
             AXObserverRemoveNotification(observer, app, kAXFocusedWindowChangedNotification as CFString)
             AXObserverRemoveNotification(observer, app, kAXWindowCreatedNotification as CFString)
+            for w in subscribedWindows {
+                AXObserverRemoveNotification(observer, w, kAXUIElementDestroyedNotification as CFString)
+            }
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .commonModes)
         }
         observer = nil
         terminalApp = nil
+        subscribedWindows = []
+        pid = 0
 
         if let m = keyMonitorGlobal { NSEvent.removeMonitor(m); keyMonitorGlobal = nil }
         if let m = keyMonitorLocal { NSEvent.removeMonitor(m); keyMonitorLocal = nil }
 
         lastFocused = nil
+        ignoreFocusCounter = 0
         isTiling = false
         onStateChange?()
     }
 
     private func subscribeDestroy(_ window: AXUIElement) {
         guard let observer = observer else { return }
+        if subscribedWindows.contains(where: { CFEqual($0, window) }) { return }
         let context = Unmanaged.passUnretained(self).toOpaque()
         AXObserverAddNotification(observer, window, kAXUIElementDestroyedNotification as CFString, context)
+        subscribedWindows.append(window)
     }
 
     // MARK: - Layout
 
     private func layoutGrid() {
-        let groups = Dictionary(grouping: managed, by: { screenIndex(for: $0.original) })
-        ignoreFocus = true
+        let groups = Dictionary(grouping: managed, by: { screenIndex(forAX: $0.original) })
+        suspendFocus(for: 0.4)
         for (idx, group) in groups {
             let screen = axVisibleFrame(for: idx)
             let frames = computeGrid(count: group.count, in: screen)
             for (i, m) in group.enumerated() {
                 m.slot = frames[i]
-                animateFrame(m.window, to: frames[i])
+                animateFrame(m, to: frames[i])
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { self.ignoreFocus = false }
     }
 
     fileprivate func handleFocusChange(_ window: AXUIElement) {
-        guard isTiling, !ignoreFocus else { return }
+        guard isTiling, !isFocusIgnored else { return }
         guard managed.contains(where: { CFEqual($0.window, window) }) else { return }
         if let last = lastFocused, CFEqual(last, window) { return }
         lastFocused = window
-
-        ignoreFocus = true
+        suspendFocus(for: 0.45)
         zoom(window)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.ignoreFocus = false }
     }
 
     fileprivate func handleWindowCreated(_ window: AXUIElement) {
-        // Brief delay so the new window has a real subrole/size by the time we check.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.refreshWindows()
         }
     }
 
     fileprivate func handleWindowDestroyed(_ window: AXUIElement) {
+        guard isTiling else { return }
         DispatchQueue.main.async { [weak self] in
             self?.refreshWindows()
         }
     }
 
     private func zoom(_ focused: AXUIElement) {
-        let idx = screenIndex(for: getFrame(focused))
+        guard let focusedManaged = managed.first(where: { CFEqual($0.window, focused) }) else { return }
+        // Use the focused window's LIVE frame (not the cached slot) to find its current screen —
+        // handles the case where the user manually dragged a tile to another display.
+        let liveFocused = getFrame(focused)
+        let idx = screenIndex(forAX: liveFocused)
         let screen = axVisibleFrame(for: idx)
-        let onScreen = managed.filter { screenIndex(for: $0.slot) == idx }
+        let onScreen = managed.filter { screenIndex(forAX: getFrame($0.window)) == idx }
 
-        switch zoomMode {
+        switch _zoomMode {
         case .sideStrip:
             let mainW = floor(screen.width * 0.78)
-            animateFrame(focused, to: CGRect(x: screen.minX, y: screen.minY, width: mainW, height: screen.height))
+            animateFrame(focusedManaged, to: CGRect(x: screen.minX, y: screen.minY, width: mainW, height: screen.height))
             let others = onScreen.filter { !CFEqual($0.window, focused) }
             guard !others.isEmpty else { return }
             let stripX = screen.minX + mainW
             let stripW = screen.width - mainW
             let h = screen.height / CGFloat(others.count)
             for (i, m) in others.enumerated() {
-                animateFrame(m.window, to: CGRect(x: stripX, y: screen.minY + CGFloat(i) * h, width: stripW, height: h))
+                animateFrame(m, to: CGRect(x: stripX, y: screen.minY + CGFloat(i) * h, width: stripW, height: h))
             }
         case .fullScreen:
-            animateFrame(focused, to: screen)
-            // Other windows stay in their grid slots, just behind the focused one.
+            animateFrame(focusedManaged, to: screen)
         }
+    }
+
+    // MARK: - Alerts
+
+    private func showAccessibilityAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility access required"
+        alert.informativeText = "Terminal Tiler needs Accessibility permission to read and move Terminal windows. Grant access in System Settings → Privacy & Security → Accessibility, then click Tile again."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func showAlert(title: String, body: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = body
+        alert.runModal()
     }
 
     // MARK: - AX helpers
 
     private func isManageable(_ win: AXUIElement) -> Bool {
         var subRef: AnyObject?
-        AXUIElementCopyAttributeValue(win, kAXSubroleAttribute as CFString, &subRef)
-        let subrole = subRef as? String ?? ""
-        guard subrole == (kAXStandardWindowSubrole as String) else { return false }
-
+        let r1 = AXUIElementCopyAttributeValue(win, kAXSubroleAttribute as CFString, &subRef)
+        guard r1 == .success, let subrole = subRef as? String, subrole == (kAXStandardWindowSubrole as String) else {
+            return false
+        }
         var minRef: AnyObject?
         AXUIElementCopyAttributeValue(win, kAXMinimizedAttribute as CFString, &minRef)
         let minimized = (minRef as? Bool) ?? false
@@ -228,41 +303,62 @@ final class WindowManager {
     private func getFrame(_ win: AXUIElement) -> CGRect {
         var posRef: AnyObject?
         var sizeRef: AnyObject?
-        AXUIElementCopyAttributeValue(win, kAXPositionAttribute as CFString, &posRef)
-        AXUIElementCopyAttributeValue(win, kAXSizeAttribute as CFString, &sizeRef)
+        let r1 = AXUIElementCopyAttributeValue(win, kAXPositionAttribute as CFString, &posRef)
+        let r2 = AXUIElementCopyAttributeValue(win, kAXSizeAttribute as CFString, &sizeRef)
+
         var pos = CGPoint.zero
         var size = CGSize.zero
-        if let p = posRef { AXValueGetValue(p as! AXValue, .cgPoint, &pos) }
-        if let s = sizeRef { AXValueGetValue(s as! AXValue, .cgSize, &size) }
+        if r1 == .success, let p = posRef, CFGetTypeID(p) == AXValueGetTypeID() {
+            AXValueGetValue(p as! AXValue, .cgPoint, &pos)
+        }
+        if r2 == .success, let s = sizeRef, CFGetTypeID(s) == AXValueGetTypeID() {
+            AXValueGetValue(s as! AXValue, .cgSize, &size)
+        }
         return CGRect(origin: pos, size: size)
     }
 
     private func setFrame(_ win: AXUIElement, to frame: CGRect) {
+        let cur = getFrame(win)
+        let growing = frame.width > cur.width || frame.height > cur.height
         var pos = frame.origin
         var size = frame.size
-        if let v = AXValueCreate(.cgPoint, &pos) {
-            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v)
-        }
-        if let v = AXValueCreate(.cgSize, &size) {
-            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v)
+
+        // Set the dimension that grows first; otherwise Terminal can clamp the second write.
+        if growing {
+            if let v = AXValueCreate(.cgSize, &size) {
+                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v)
+            }
+            if let v = AXValueCreate(.cgPoint, &pos) {
+                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v)
+            }
+        } else {
+            if let v = AXValueCreate(.cgPoint, &pos) {
+                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v)
+            }
+            if let v = AXValueCreate(.cgSize, &size) {
+                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v)
+            }
         }
     }
 
-    private func animateFrame(_ win: AXUIElement, to target: CGRect, duration: TimeInterval = 0.18) {
-        let start = getFrame(win)
+    private func animateFrame(_ m: Managed, to target: CGRect, duration: TimeInterval = 0.18) {
+        m.animationGeneration += 1
+        let myGen = m.animationGeneration
+        let start = getFrame(m.window)
         let steps = 10
         let dt = duration / Double(steps)
         for i in 1...steps {
             let t = Double(i) / Double(steps)
             let eased = 1 - pow(1 - t, 3)
-            DispatchQueue.main.asyncAfter(deadline: .now() + dt * Double(i)) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + dt * Double(i)) { [weak m, weak self] in
+                guard let self = self, let m = m, m.animationGeneration == myGen else { return }
                 let f = CGRect(
                     x: start.minX + (target.minX - start.minX) * eased,
                     y: start.minY + (target.minY - start.minY) * eased,
                     width: start.width + (target.width - start.width) * eased,
                     height: start.height + (target.height - start.height) * eased
                 )
-                self?.setFrame(win, to: f)
+                self.setFrame(m.window, to: f)
             }
         }
     }
@@ -287,31 +383,44 @@ final class WindowManager {
         return frames
     }
 
-    // MARK: - Screen / coordinates
+    // MARK: - Coordinates
+    //
+    // AX uses origin at the TOP-LEFT of the primary display, y growing downward, in a
+    // coordinate space that spans every connected display. NSScreen uses a BOTTOM-LEFT
+    // origin (also primary-anchored) with y growing upward. The conversion is:
+    //
+    //     ax_y = primary.frame.height - ns_maxY
+    //     ax_x = ns_x  (no change)
+    //
+    // This is correct for displays in any arrangement — above, below, left, or right of
+    // primary — because it converts each screen's NS-coords frame into the same AX space.
 
-    /// Returns the index in `NSScreen.screens` for the screen that contains the given AX-coords frame.
-    private func screenIndex(for axFrame: CGRect) -> Int {
+    private func axFrame(of screen: NSScreen) -> CGRect {
+        guard let primary = NSScreen.screens.first else { return screen.frame }
+        let primaryHeight = primary.frame.height
+        let ns = screen.frame
+        return CGRect(x: ns.minX, y: primaryHeight - ns.maxY, width: ns.width, height: ns.height)
+    }
+
+    private func axVisibleFrame(of screen: NSScreen) -> CGRect {
+        guard let primary = NSScreen.screens.first else { return screen.visibleFrame }
+        let primaryHeight = primary.frame.height
+        let v = screen.visibleFrame
+        return CGRect(x: v.minX, y: primaryHeight - v.maxY, width: v.width, height: v.height)
+    }
+
+    private func screenIndex(forAX axRect: CGRect) -> Int {
         guard !NSScreen.screens.isEmpty else { return 0 }
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        let center = CGPoint(x: axFrame.midX, y: primaryHeight - axFrame.midY)
-        for (i, screen) in NSScreen.screens.enumerated() where screen.frame.contains(center) {
-            return i
+        let center = CGPoint(x: axRect.midX, y: axRect.midY)
+        for (i, screen) in NSScreen.screens.enumerated() {
+            if axFrame(of: screen).contains(center) { return i }
         }
         return 0
     }
 
-    /// AX-coords visible frame (excludes menu bar / dock) for a given screen index.
     private func axVisibleFrame(for screenIndex: Int) -> CGRect {
         guard screenIndex < NSScreen.screens.count else { return .zero }
-        let screen = NSScreen.screens[screenIndex]
-        let visible = screen.visibleFrame
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        return CGRect(
-            x: visible.minX,
-            y: primaryHeight - visible.maxY,
-            width: visible.width,
-            height: visible.height
-        )
+        return axVisibleFrame(of: NSScreen.screens[screenIndex])
     }
 }
 

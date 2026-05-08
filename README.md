@@ -29,11 +29,18 @@ osascript -e 'tell application "System Events" to make login item at end with pr
 
 Click the grid icon in the menu bar:
 
-- **Tile Terminal Windows** — lay out every standard Terminal window in an even grid.
-- Click any tile → it zooms to ~78% width on the left; the rest stack on the right strip.
-- **Esc** — re-tile back to the even grid.
-- **Re-tile Now** — re-detect windows and re-grid (use after opening or closing windows).
-- **Stop Tiling** — restore every window to where it was before.
+- **Tile Terminal Windows** — lay out every standard Terminal window in an even grid (one grid per display).
+- Click any tile → it zooms. Two zoom styles: **Side Strip** (focused fills 78% on the left, others stack on the right) or **Full Screen** (focused fills the screen).
+- **Esc** (while Terminal is frontmost) — re-tile back to the even grid.
+- **⌘⌥T** — toggle tiling from anywhere.
+- **Re-tile Now** / **Refresh Window List** — refresh the layout after opening or closing windows (auto-detects most cases).
+- **Stop Tiling** — submenu with two choices: *Restore Originals* (snap each window back to where it was before tiling started) or *Leave Where They Are* (just stop managing the windows in place).
+
+## Notes
+
+- New Terminal windows are auto-detected and added to the grid.
+- Windows on multiple displays each tile within their own display.
+- After granting Accessibility permission, you may need to relaunch the app for observers to attach (the app will prompt with a System Settings deep-link if permission is missing).
 
 ## Requirements
 

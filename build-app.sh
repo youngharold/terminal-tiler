@@ -8,8 +8,8 @@ cd "$(dirname "$0")"
 APP_NAME="TerminalTiler"
 APP_DIR="$APP_NAME.app"
 BIN_PATH=".build/release/$APP_NAME"
-VERSION="0.1.0"
-BUILD="1"
+VERSION="0.2.0"
+BUILD="2"
 
 echo "==> swift build (release)"
 swift build -c release
@@ -31,7 +31,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>
     <string>Terminal Tiler</string>
     <key>CFBundleIdentifier</key>
-    <string>com.harold.terminal-tiler</string>
+    <string>com.youngharold.terminal-tiler</string>
     <key>CFBundleVersion</key>
     <string>$BUILD</string>
     <key>CFBundleShortVersionString</key>
