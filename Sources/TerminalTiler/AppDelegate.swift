@@ -145,16 +145,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let zoomItem = NSMenuItem(title: "Zoom Style", action: nil, keyEquivalent: "")
         let zoomMenu = NSMenu()
-        let sideStrip = NSMenuItem(title: "Side Strip (focused + thumbnails)", action: #selector(setSideStrip), keyEquivalent: "")
-        sideStrip.target = self
-        sideStrip.state = manager.zoomMode == .sideStrip ? .on : .off
-        zoomMenu.addItem(sideStrip)
-        let fullScreen = NSMenuItem(title: "Full Screen (focused fills, others hidden)", action: #selector(setFullScreen), keyEquivalent: "")
-        fullScreen.target = self
-        fullScreen.state = manager.zoomMode == .fullScreen ? .on : .off
-        zoomMenu.addItem(fullScreen)
+        for mode in ZoomMode.allCases {
+            let item = NSMenuItem(title: mode.displayName, action: #selector(setZoomMode(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = manager.zoomMode == mode ? .on : .off
+            item.representedObject = mode.rawValue
+            zoomMenu.addItem(item)
+        }
         zoomItem.submenu = zoomMenu
         menu.addItem(zoomItem)
+
+        let autoReturnItem = NSMenuItem(title: "Auto Return to Grid", action: nil, keyEquivalent: "")
+        let autoMenu = NSMenu()
+        let idleItem = NSMenuItem(title: "After 5 min idle", action: #selector(toggleIdleReturn), keyEquivalent: "")
+        idleItem.target = self
+        idleItem.state = manager.autoReturnIdleEnabled ? .on : .off
+        autoMenu.addItem(idleItem)
+        let hoverItem = NSMenuItem(title: "On hover at top edge", action: #selector(toggleHoverReturn), keyEquivalent: "")
+        hoverItem.target = self
+        hoverItem.state = manager.autoReturnHoverEnabled ? .on : .off
+        autoMenu.addItem(hoverItem)
+        let sendItem = NSMenuItem(title: "After ⏎ + 3s idle (Claude-CLI style)", action: #selector(toggleSendReturn), keyEquivalent: "")
+        sendItem.target = self
+        sendItem.state = manager.autoReturnAfterSendEnabled ? .on : .off
+        autoMenu.addItem(sendItem)
+        autoReturnItem.submenu = autoMenu
+        menu.addItem(autoReturnItem)
 
         menu.addItem(.separator())
 
@@ -249,6 +265,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func retileNow() { manager.retile() }
     @objc private func refreshWindows() { manager.refreshWindows() }
     @objc private func excludeFocused() { manager.excludeFocused() }
-    @objc private func setSideStrip() { manager.zoomMode = .sideStrip }
-    @objc private func setFullScreen() { manager.zoomMode = .fullScreen }
+    @objc private func setZoomMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = ZoomMode(rawValue: raw) else { return }
+        manager.zoomMode = mode
+    }
+
+    @objc private func toggleIdleReturn() { manager.autoReturnIdleEnabled.toggle() }
+    @objc private func toggleHoverReturn() { manager.autoReturnHoverEnabled.toggle() }
+    @objc private func toggleSendReturn() { manager.autoReturnAfterSendEnabled.toggle() }
 }

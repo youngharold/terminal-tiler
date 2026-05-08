@@ -30,7 +30,11 @@ Click the menu bar icon → **Launch at Login**. (Uses `SMAppService` — requir
 Click the grid icon in the menu bar:
 
 - **Tile Terminal Windows** — lay out every standard Terminal window in an even grid (one grid per display).
-- Click any tile → it zooms. Two zoom styles: **Side Strip** (focused fills 78% on the left, others stack on the right) or **Full Screen** (focused fills the screen).
+- Click any tile → it zooms. Four zoom styles in the **Zoom Style** submenu:
+  - **Side Strip** — focused fills 78% on the left, others stack on the right.
+  - **Full Screen** — focused fills the screen entirely.
+  - **Full Column** — focused expands vertically only (1/N width × full screen height).
+  - **Disabled** — clicking does nothing; the static grid stays put.
 - **⌘⌥T** — toggle tiling from anywhere.
 - **⌘⌥G** — return to the even grid (works from any app; doesn't conflict with vim/REPL Esc behavior in Terminal).
 - **⌘⌥⇧T** — Stop tiling and leave windows where they are (no restore).
@@ -47,6 +51,20 @@ Click the grid icon in the menu bar:
 | `⌘⌥⇧T`      | *Stop & Leave* (windows stay where they are)  |
 
 Hotkeys are global — they fire from any app. They use `charactersIgnoringModifiers` so they map to the physical keys on Dvorak / AZERTY / QWERTZ as well as US-QWERTY.
+
+## Auto Return to Grid
+
+Three triggers can return a zoomed window to the grid without you reaching for a hotkey, all toggleable in the **Auto Return to Grid** submenu:
+
+- **After 5 min idle** — no input on screen for 5 minutes → grid.
+- **On hover at top edge** — move mouse to the very top of the screen for 0.3s → grid.
+- **After ⏎ + 3s idle** — press Return inside the zoomed window, then no further keystrokes for 3 seconds → grid. Best for Claude-CLI / chat-style usage where you send a message and wait for output.
+
+All three are off by default. Enable any combination.
+
+## Drag to reorder
+
+While tiled, drag a Terminal window's title bar to move it. On release, Terminal Tiler snaps it into the closest grid slot and swaps with whatever was there. Order persists for the session — restarting tiling resets to the original order.
 
 ## Notes
 

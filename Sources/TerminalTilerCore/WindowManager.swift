@@ -1,9 +1,24 @@
 import AppKit
 import ApplicationServices
 
-public enum ZoomMode: String {
+public enum ZoomMode: String, CaseIterable {
+    /// Focused fills 78% width; others stack on right strip.
     case sideStrip
+    /// Focused fills the screen entirely.
     case fullScreen
+    /// Focused expands to its column's full screen height (1/N width × full height).
+    case fullColumn
+    /// Click does nothing — windows stay in the static grid.
+    case disabled
+
+    public var displayName: String {
+        switch self {
+        case .sideStrip:  return "Side Strip (focused + thumbnails)"
+        case .fullScreen: return "Full Screen (focused fills)"
+        case .fullColumn: return "Full Column (focused expands vertically)"
+        case .disabled:   return "Disabled (no zoom on click)"
+        }
+    }
 }
 
 public final class WindowManager {
@@ -41,7 +56,43 @@ public final class WindowManager {
         }
     }
     private static let zoomModeKey = "TerminalTiler.zoomMode"
+    private static let idleReturnKey = "TerminalTiler.autoReturnIdleEnabled"
+    private static let idleReturnSecondsKey = "TerminalTiler.autoReturnIdleSeconds"
+    private static let hoverReturnKey = "TerminalTiler.autoReturnHoverEnabled"
+    private static let sendReturnKey = "TerminalTiler.autoReturnAfterSendEnabled"
+    private static let sendReturnSecondsKey = "TerminalTiler.autoReturnAfterSendSeconds"
+
     private var _zoomMode: ZoomMode = .sideStrip
+
+    // MARK: - Auto-return settings (persisted)
+
+    public var autoReturnIdleEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.idleReturnKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.idleReturnKey); onStateChange?() }
+    }
+    /// Default 5 minutes if unset.
+    public var autoReturnIdleSeconds: TimeInterval {
+        get {
+            let v = UserDefaults.standard.double(forKey: Self.idleReturnSecondsKey)
+            return v > 0 ? v : 300
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Self.idleReturnSecondsKey) }
+    }
+    public var autoReturnHoverEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.hoverReturnKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.hoverReturnKey); onStateChange?() }
+    }
+    public var autoReturnAfterSendEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.sendReturnKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.sendReturnKey); onStateChange?() }
+    }
+    public var autoReturnAfterSendSeconds: TimeInterval {
+        get {
+            let v = UserDefaults.standard.double(forKey: Self.sendReturnSecondsKey)
+            return v > 0 ? v : 3
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Self.sendReturnSecondsKey) }
+    }
 
     private final class Managed {
         let window: AXUIElement
@@ -49,6 +100,9 @@ public final class WindowManager {
         var slot: CGRect = .zero
         var screenIdx: Int = 0
         var animationGeneration: Int = 0
+        /// Debounce timer for user-drag detection: kAXMovedNotification fires for every
+        /// pixel of a drag; we only act after 0.3s of no further moves (drop).
+        var dragSettleTimer: Timer?
         init(window: AXUIElement, original: CGRect) {
             self.window = window
             self.original = original
@@ -61,6 +115,21 @@ public final class WindowManager {
     private var subscribedWindows: [AXUIElement] = []
     private var observer: AXObserver?
     private var refreshScheduled = false
+    /// Wall-clock timestamp of the most recent zoom; used to know whether auto-return
+    /// triggers (idle/hover/send) should fire at all.
+    private var zoomedAt: Date?
+    /// Polls user idle every 30s; if zoomed and idle > threshold, returns to grid.
+    private var idleTimer: Timer?
+    /// Tracks how long the mouse has been at the top edge while zoomed.
+    private var hoverEdgeEnteredAt: Date?
+    /// Watches for the user pressing Return inside Terminal; on idle-after-Enter, returns.
+    private var sendReturnTimer: Timer?
+    /// Local + global mouse moved monitor (for hover detection).
+    private var mouseMonitorGlobal: Any?
+    private var mouseMonitorLocal: Any?
+    /// Local + global key monitor for the auto-return-after-send trigger.
+    private var sendKeyMonitorGlobal: Any?
+    private var sendKeyMonitorLocal: Any?
     private var ignoreFocusCounter: Int = 0
     private var lastFocused: AXUIElement?
     /// Bumped on every start()/stop() so deferred suspendFocus decrements from a previous
@@ -68,6 +137,19 @@ public final class WindowManager {
     private var sessionEpoch: Int = 0
 
     private var isFocusIgnored: Bool { ignoreFocusCounter > 0 }
+
+    /// Mark that we're now in a zoomed state, and reset any drift the auto-return triggers
+    /// were tracking (so a fresh 5-min countdown begins).
+    private func markZoomed() {
+        zoomedAt = Date()
+        hoverEdgeEnteredAt = nil
+        sendReturnTimer?.invalidate(); sendReturnTimer = nil
+    }
+
+    /// True if we just zoomed a window and triggers should consider auto-returning.
+    private var isZoomed: Bool {
+        return zoomedAt != nil && lastFocused != nil
+    }
 
     private func suspendFocus(for duration: TimeInterval) {
         let myEpoch = sessionEpoch
@@ -91,6 +173,9 @@ public final class WindowManager {
         guard isTiling else { return }
         layoutGrid()
         lastFocused = nil
+        zoomedAt = nil
+        hoverEdgeEnteredAt = nil
+        sendReturnTimer?.invalidate(); sendReturnTimer = nil
     }
 
     /// Drop the most-recently-focused window from tiling and snap it back to its `original`
@@ -137,6 +222,7 @@ public final class WindowManager {
         if let observer = observer {
             for w in dead {
                 AXObserverRemoveNotification(observer, w, kAXUIElementDestroyedNotification as CFString)
+                AXObserverRemoveNotification(observer, w, kAXMovedNotification as CFString)
             }
         }
         subscribedWindows.removeAll { sub in dead.contains(where: { CFEqual($0, sub) }) }
@@ -225,21 +311,122 @@ public final class WindowManager {
         sessionEpoch &+= 1
         isTiling = true
         layoutGrid()
+        installAutoReturnMonitors()
         onStateChange?()
+    }
+
+    private func installAutoReturnMonitors() {
+        // Idle poll runs every 30s; cheap; kicks retile when threshold crossed.
+        idleTimer?.invalidate()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.checkIdleAutoReturn()
+        }
+
+        // Mouse monitor for top-edge hover. Both global and local so it fires regardless
+        // of which app is frontmost.
+        let mouseHandler: (NSEvent) -> Void = { [weak self] event in
+            self?.handleMouseMoved(event)
+        }
+        mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { event in
+            mouseHandler(event)
+        }
+        mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { event in
+            mouseHandler(event)
+            return event
+        }
+
+        // Key monitor for "user pressed Return → start send-idle countdown".
+        let keyHandler: (NSEvent) -> Void = { [weak self] event in
+            self?.handleSendKey(event)
+        }
+        sendKeyMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            keyHandler(event)
+        }
+        sendKeyMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            keyHandler(event)
+            return event
+        }
+    }
+
+    private func removeAutoReturnMonitors() {
+        idleTimer?.invalidate(); idleTimer = nil
+        sendReturnTimer?.invalidate(); sendReturnTimer = nil
+        if let m = mouseMonitorGlobal { NSEvent.removeMonitor(m); mouseMonitorGlobal = nil }
+        if let m = mouseMonitorLocal { NSEvent.removeMonitor(m); mouseMonitorLocal = nil }
+        if let m = sendKeyMonitorGlobal { NSEvent.removeMonitor(m); sendKeyMonitorGlobal = nil }
+        if let m = sendKeyMonitorLocal { NSEvent.removeMonitor(m); sendKeyMonitorLocal = nil }
+        hoverEdgeEnteredAt = nil
+    }
+
+    private func checkIdleAutoReturn() {
+        guard isTiling, isZoomed, autoReturnIdleEnabled else { return }
+        let idle = CGEventSource.secondsSinceLastEventType(
+            .combinedSessionState,
+            eventType: CGEventType(rawValue: ~0) ?? .null
+        )
+        if idle >= autoReturnIdleSeconds {
+            retile()
+        }
+    }
+
+    private func handleMouseMoved(_ event: NSEvent) {
+        guard isTiling, isZoomed, autoReturnHoverEnabled else { hoverEdgeEnteredAt = nil; return }
+        // NSEvent.mouseLocation is screen coords with origin at the bottom-left of the
+        // primary display. We want "is the mouse at the very top of any screen?"
+        let p = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(p) }) else { return }
+        let isAtTop = p.y >= screen.frame.maxY - 2
+        if isAtTop {
+            if let entered = hoverEdgeEnteredAt {
+                if Date().timeIntervalSince(entered) >= 0.3 {
+                    hoverEdgeEnteredAt = nil
+                    retile()
+                }
+            } else {
+                hoverEdgeEnteredAt = Date()
+            }
+        } else {
+            hoverEdgeEnteredAt = nil
+        }
+    }
+
+    private func handleSendKey(_ event: NSEvent) {
+        guard isTiling, isZoomed, autoReturnAfterSendEnabled else { return }
+        // We only count Return/Enter (keyCode 36) and the keypad Enter (76). After Return,
+        // start an idle timer; if any further keystroke fires, push the countdown out so a
+        // continuous typist doesn't get yanked back to grid mid-sentence.
+        if event.keyCode == 36 || event.keyCode == 76 {
+            sendReturnTimer?.invalidate()
+            sendReturnTimer = Timer.scheduledTimer(withTimeInterval: autoReturnAfterSendSeconds, repeats: false) { [weak self] _ in
+                guard let self = self, self.isTiling, self.isZoomed else { return }
+                self.retile()
+            }
+        } else if sendReturnTimer != nil {
+            // User started typing again — reset the countdown.
+            sendReturnTimer?.invalidate()
+            sendReturnTimer = Timer.scheduledTimer(withTimeInterval: autoReturnAfterSendSeconds, repeats: false) { [weak self] _ in
+                guard let self = self, self.isTiling, self.isZoomed else { return }
+                self.retile()
+            }
+        }
     }
 
     private func stop(restore: Bool) {
         sessionEpoch &+= 1
+        removeAutoReturnMonitors()
         if restore {
             for m in managed { setFrame(m.window, to: m.original) }
         }
         managed = []
 
+        // Cancel any in-flight drag-settle timers before tearing down.
+        for m in managed { m.dragSettleTimer?.invalidate(); m.dragSettleTimer = nil }
         if let observer = observer, let app = terminalApp {
             AXObserverRemoveNotification(observer, app, kAXFocusedWindowChangedNotification as CFString)
             AXObserverRemoveNotification(observer, app, kAXWindowCreatedNotification as CFString)
             for w in subscribedWindows {
                 AXObserverRemoveNotification(observer, w, kAXUIElementDestroyedNotification as CFString)
+                AXObserverRemoveNotification(observer, w, kAXMovedNotification as CFString)
             }
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .commonModes)
         }
@@ -250,6 +437,7 @@ public final class WindowManager {
         refreshScheduled = false
 
         lastFocused = nil
+        zoomedAt = nil
         ignoreFocusCounter = 0
         isTiling = false
         onStateChange?()
@@ -260,6 +448,9 @@ public final class WindowManager {
         if subscribedWindows.contains(where: { CFEqual($0, window) }) { return }
         let context = Unmanaged.passUnretained(self).toOpaque()
         AXObserverAddNotification(observer, window, kAXUIElementDestroyedNotification as CFString, context)
+        // Drag-to-reorder: AX kAXMovedNotification fires on every frame change. We rely on
+        // the per-Managed dragSettleTimer + isFocusIgnored gate to ignore our own writes.
+        AXObserverAddNotification(observer, window, kAXMovedNotification as CFString, context)
         subscribedWindows.append(window)
     }
 
@@ -289,9 +480,13 @@ public final class WindowManager {
         // the user's actual focus, not the one we last animated.
         let isNew = !(lastFocused.map { CFEqual($0, window) } ?? false)
         lastFocused = window
+        // .disabled mode: the grid is static. Skip zoom entirely (and skip suspendFocus,
+        // since we won't be writing frames).
+        guard _zoomMode != .disabled else { return }
         guard !isFocusIgnored, isNew else { return }
         suspendFocus(for: 0.45)
         zoom(window)
+        markZoomed()
     }
 
     fileprivate func handleWindowCreated(_ window: AXUIElement) {
@@ -300,6 +495,42 @@ public final class WindowManager {
 
     fileprivate func handleWindowDestroyed(_ window: AXUIElement) {
         scheduleRefresh()
+    }
+
+    /// AX move notification fires on every pixel of a drag AND on every step of our own
+    /// animations. `isFocusIgnored` is true while we're mid-write, so we ignore those.
+    /// Otherwise the move was user-initiated; debounce 0.3s for the drop, then swap with
+    /// whichever grid slot the dropped center is closest to.
+    fileprivate func handleWindowMoved(_ window: AXUIElement) {
+        guard isTiling, !isFocusIgnored else { return }
+        guard let m = managed.first(where: { CFEqual($0.window, window) }) else { return }
+        m.dragSettleTimer?.invalidate()
+        m.dragSettleTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self, weak m] _ in
+            guard let self = self, let m = m, self.isTiling else { return }
+            m.dragSettleTimer = nil
+            self.handleUserDragSettled(m)
+        }
+    }
+
+    private func handleUserDragSettled(_ dragged: Managed) {
+        let live = getFrame(dragged.window)
+        let liveCenter = CGPoint(x: live.midX, y: live.midY)
+        var bestIdx = -1
+        var bestDist = CGFloat.greatestFiniteMagnitude
+        for (idx, candidate) in managed.enumerated() {
+            let c = CGPoint(x: candidate.slot.midX, y: candidate.slot.midY)
+            let dx = c.x - liveCenter.x, dy = c.y - liveCenter.y
+            let d = dx * dx + dy * dy
+            if d < bestDist { bestDist = d; bestIdx = idx }
+        }
+        guard bestIdx >= 0,
+              let myIdx = managed.firstIndex(where: { CFEqual($0.window, dragged.window) }) else { return }
+        if bestIdx != myIdx {
+            managed.swapAt(myIdx, bestIdx)
+        }
+        // Re-tile to land everyone in their new slot. layoutGrid suspends focus so the
+        // resulting writes don't fire move-notifications back at us.
+        layoutGrid()
     }
 
     /// Coalesce rapid window create/destroy bursts into one refresh. The 0.15s wait also
@@ -331,6 +562,15 @@ public final class WindowManager {
         let onScreen = managed.filter { $0.screenIdx == idx }
 
         switch _zoomMode {
+        case .disabled:
+            return
+        case .fullColumn:
+            // Expand the focused window to its column width × full screen height.
+            // Other windows stay where they are; the focused one covers its column-mates
+            // visually but they remain at their grid positions.
+            let slot = focusedManaged.slot
+            animateFrame(focusedManaged, to: CGRect(x: slot.minX, y: screen.minY, width: slot.width, height: screen.height))
+            return
         case .sideStrip:
             let others = onScreen.filter { !CFEqual($0.window, focused) }
             // Fall back to fullScreen when strip cells would be unreadably thin
@@ -476,6 +716,8 @@ private func axCallback(
             manager.handleWindowCreated(element)
         case kAXUIElementDestroyedNotification:
             manager.handleWindowDestroyed(element)
+        case kAXMovedNotification:
+            manager.handleWindowMoved(element)
         default:
             break
         }
