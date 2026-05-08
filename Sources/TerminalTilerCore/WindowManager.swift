@@ -85,7 +85,14 @@ public final class WindowManager {
     /// frame. The window stays open and can be re-tiled by stopping and re-starting tiling.
     /// If fewer than 2 windows would remain, tiling stops with a restore.
     public func excludeFocused() {
-        guard isTiling, let last = lastFocused else { return }
+        guard isTiling else { return }
+        guard let last = lastFocused else {
+            showAlert(
+                title: "Click a tile first",
+                body: "Click the tile you want to exclude (so it zooms), then choose Exclude Focused Window from the menu."
+            )
+            return
+        }
         guard let m = managed.first(where: { CFEqual($0.window, last) }) else { return }
         suspendFocus(for: 0.4)
         setFrame(last, to: m.original)

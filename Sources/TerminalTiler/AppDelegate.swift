@@ -184,6 +184,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.messageText = "Couldn't change Launch at Login setting"
             alert.informativeText = "\(error.localizedDescription)\n\nMake sure Terminal Tiler is in /Applications and is allowed in System Settings → General → Login Items."
             alert.runModal()
+            rebuildMenu()
+            return
+        }
+        // .requiresApproval: registration was accepted but the user must enable Terminal Tiler
+        // in System Settings → General → Login Items. Surface that explicitly so they don't
+        // think the toggle is broken.
+        if service.status == .requiresApproval {
+            let alert = NSAlert()
+            alert.messageText = "Approval needed in System Settings"
+            alert.informativeText = "Terminal Tiler is registered as a login item but needs your approval. Open System Settings → General → Login Items and toggle Terminal Tiler on."
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn,
+               let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+                NSWorkspace.shared.open(url)
+            }
         }
         rebuildMenu()
     }
