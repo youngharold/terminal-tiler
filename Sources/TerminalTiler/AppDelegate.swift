@@ -40,14 +40,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerToggleHotkey() {
-        // Cmd+Option+T to toggle tiling. Match by character (layout-independent) and
-        // explicitly allow only the two modifiers we want — Caps Lock is fine.
+        // ⌘⌥T  — toggle tiling (start, or Stop & Restore if tiling)
+        // ⌘⌥⇧T — Stop & Leave Where They Are (only meaningful while tiling)
+        // ⌘⌥G  — return to grid (replaces Esc, which conflicts with vim/REPLs in Terminal)
         toggleHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let mods = event.modifierFlags
-            guard mods.contains(.command), mods.contains(.option),
-                  !mods.contains(.shift), !mods.contains(.control),
-                  event.charactersIgnoringModifiers?.lowercased() == "t" else { return }
-            DispatchQueue.main.async { self?.manager.toggle() }
+            let cmdOpt = mods.contains(.command) && mods.contains(.option)
+            guard cmdOpt, !mods.contains(.control) else { return }
+            let char = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            let shift = mods.contains(.shift)
+            DispatchQueue.main.async { [weak self] in
+                guard let m = self?.manager else { return }
+                switch (char, shift) {
+                case ("t", false): m.toggle()
+                case ("t", true):  if m.isTiling { m.stopAndLeaveInPlace() }
+                case ("g", false): if m.isTiling { m.retile() }
+                default: break
+                }
+            }
         }
     }
 
@@ -73,7 +83,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restore.target = self
             stopMenu.addItem(restore)
 
-            let leave = NSMenuItem(title: "Stop & Leave Where They Are", action: #selector(stopAndLeave), keyEquivalent: "")
+            let leave = NSMenuItem(title: "Stop & Leave Where They Are", action: #selector(stopAndLeave), keyEquivalent: "T")
+            leave.keyEquivalentModifierMask = [.command, .option, .shift]
             leave.target = self
             stopMenu.addItem(leave)
 
@@ -81,7 +92,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(stopRoot)
         }
 
-        let retile = NSMenuItem(title: "Re-tile Now", action: #selector(retileNow), keyEquivalent: "r")
+        let retile = NSMenuItem(title: "Return to Grid", action: #selector(retileNow), keyEquivalent: "g")
+        retile.keyEquivalentModifierMask = [.command, .option]
         retile.target = self
         retile.isEnabled = manager.isTiling
         menu.addItem(retile)
@@ -115,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         about.isEnabled = false
         menu.addItem(about)
 
-        let hint = NSMenuItem(title: "Esc returns to grid · ⌘⌥T toggles", action: nil, keyEquivalent: "")
+        let hint = NSMenuItem(title: "⌘⌥T toggle · ⌘⌥G return to grid · ⌘⌥⇧T stop & leave", action: nil, keyEquivalent: "")
         hint.isEnabled = false
         menu.addItem(hint)
 

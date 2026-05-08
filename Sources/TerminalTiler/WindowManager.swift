@@ -44,8 +44,7 @@ final class WindowManager {
     private var managed: [Managed] = []
     private var subscribedWindows: [AXUIElement] = []
     private var observer: AXObserver?
-    private var keyMonitorGlobal: Any?
-    private var keyMonitorLocal: Any?
+    private var refreshScheduled = false
     private var ignoreFocusCounter: Int = 0
     private var lastFocused: AXUIElement?
     /// Bumped on every start()/stop() so deferred suspendFocus decrements from a previous
@@ -154,18 +153,6 @@ final class WindowManager {
         for m in managed { subscribeDestroy(m.window) }
         CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .commonModes)
 
-        // Esc returns to grid — only when Terminal is the frontmost app, so we don't hijack Esc elsewhere.
-        keyMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53 else { return }
-            if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal" {
-                self?.retile()
-            }
-        }
-        keyMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 { self?.retile() }
-            return event
-        }
-
         sessionEpoch &+= 1
         isTiling = true
         layoutGrid()
@@ -191,9 +178,7 @@ final class WindowManager {
         terminalApp = nil
         subscribedWindows = []
         pid = 0
-
-        if let m = keyMonitorGlobal { NSEvent.removeMonitor(m); keyMonitorGlobal = nil }
-        if let m = keyMonitorLocal { NSEvent.removeMonitor(m); keyMonitorLocal = nil }
+        refreshScheduled = false
 
         lastFocused = nil
         ignoreFocusCounter = 0
@@ -234,15 +219,23 @@ final class WindowManager {
     }
 
     fileprivate func handleWindowCreated(_ window: AXUIElement) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.refreshWindows()
-        }
+        scheduleRefresh()
     }
 
     fileprivate func handleWindowDestroyed(_ window: AXUIElement) {
-        guard isTiling else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.refreshWindows()
+        scheduleRefresh()
+    }
+
+    /// Coalesce rapid window create/destroy bursts into one refresh. The 0.15s wait also
+    /// lets a brand-new Terminal window settle into its default frame before we capture it
+    /// as `original`.
+    private func scheduleRefresh() {
+        guard isTiling, !refreshScheduled else { return }
+        refreshScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self = self else { return }
+            self.refreshScheduled = false
+            self.refreshWindows()
         }
     }
 
@@ -326,26 +319,22 @@ final class WindowManager {
     }
 
     private func setFrame(_ win: AXUIElement, to frame: CGRect) {
-        let cur = getFrame(win)
-        let growing = frame.width > cur.width || frame.height > cur.height
         var pos = frame.origin
         var size = frame.size
-
-        // Set the dimension that grows first; otherwise Terminal can clamp the second write.
-        if growing {
-            if let v = AXValueCreate(.cgSize, &size) {
-                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v)
-            }
-            if let v = AXValueCreate(.cgPoint, &pos) {
-                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v)
-            }
-        } else {
-            if let v = AXValueCreate(.cgPoint, &pos) {
-                AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v)
-            }
-            if let v = AXValueCreate(.cgSize, &size) {
-                AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v)
-            }
+        let posVal = AXValueCreate(.cgPoint, &pos)
+        let sizeVal = AXValueCreate(.cgSize, &size)
+        // pos → size → pos. The first pos move puts the window on the destination screen
+        // (resolves cross-display moves). The size write resizes in place. The final pos
+        // write corrects any clamp from Terminal's min-size or screen-edge logic. Three
+        // IPC calls per write is acceptable; AX is the bottleneck either way.
+        if let posVal = posVal {
+            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, posVal)
+        }
+        if let sizeVal = sizeVal {
+            AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
+        }
+        if let posVal = posVal {
+            AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, posVal)
         }
     }
 
