@@ -129,6 +129,24 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(Layout.screenIndex(forAX: .zero, nsScreens: []), 0)
     }
 
+    // MARK: - gridWouldBeUnreadable()
+
+    func testUnreadable_belowThreshold() {
+        // 25 windows on 1920×1080 → 5×5 → 384×216 cells → height 216 < 200 = unreadable
+        let s = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        XCTAssertTrue(Layout.gridWouldBeUnreadable(count: 25, in: s))
+    }
+
+    func testUnreadable_aboveThreshold() {
+        // 4 windows on 1920×1080 → 2×2 → 960×540 cells → readable
+        let s = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        XCTAssertFalse(Layout.gridWouldBeUnreadable(count: 4, in: s))
+    }
+
+    func testUnreadable_zeroIsNotUnreadable() {
+        XCTAssertFalse(Layout.gridWouldBeUnreadable(count: 0, in: CGRect(x: 0, y: 0, width: 1, height: 1)))
+    }
+
     func testScreenIndex_nearestFallbackForGap() {
         // Two displays with a gap. Window center sits in the gap — should pick the nearest.
         let screens = [

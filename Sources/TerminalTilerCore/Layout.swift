@@ -2,6 +2,20 @@ import AppKit
 
 /// Pure layout math — testable without any AX or live-window state.
 enum Layout {
+    /// Minimum readable Terminal cell size; layouts with cells below this should warn.
+    static let minReadableCellSize = CGSize(width: 320, height: 200)
+
+    /// True if a grid of `count` cells over `screen` would produce cells smaller than the
+    /// readable threshold — an unusable layout.
+    static func gridWouldBeUnreadable(count: Int, in screen: CGRect) -> Bool {
+        guard count > 0 else { return false }
+        let cols = Int(ceil(sqrt(Double(count))))
+        let rows = Int(ceil(Double(count) / Double(cols)))
+        let cellW = screen.width / CGFloat(cols)
+        let cellH = screen.height / CGFloat(rows)
+        return cellW < minReadableCellSize.width || cellH < minReadableCellSize.height
+    }
+
     /// Tile `count` rectangles into a square-ish grid that covers `screen`.
     /// Result order: row-major, top-left first.
     static func grid(count: Int, in screen: CGRect) -> [CGRect] {

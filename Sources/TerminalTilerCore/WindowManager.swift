@@ -88,6 +88,15 @@ public final class WindowManager {
 
         let valid = wins.filter { isManageable($0) }
         managed.removeAll { m in !valid.contains(where: { CFEqual($0, m.window) }) }
+        // Prune destroy-notification subscriptions for windows that no longer exist; left
+        // unpruned, the list grows unboundedly across long sessions with churn.
+        let dead = subscribedWindows.filter { sub in !valid.contains(where: { CFEqual($0, sub) }) }
+        if let observer = observer {
+            for w in dead {
+                AXObserverRemoveNotification(observer, w, kAXUIElementDestroyedNotification as CFString)
+            }
+        }
+        subscribedWindows.removeAll { sub in dead.contains(where: { CFEqual($0, sub) }) }
         for w in valid where !managed.contains(where: { CFEqual($0.window, w) }) {
             // Capture original BEFORE laying out so Stop & Restore is sane.
             let mw = Managed(window: w, original: getFrame(w))
@@ -131,6 +140,20 @@ public final class WindowManager {
             terminalApp = nil
             pid = 0
             return
+        }
+
+        // Refuse layouts that would produce unreadably small Terminal cells.
+        if let primary = NSScreen.main {
+            let visible = Layout.axVisibleFrame(of: primary)
+            if Layout.gridWouldBeUnreadable(count: valid.count, in: visible) {
+                showAlert(
+                    title: "Too many Terminal windows",
+                    body: "\(valid.count) windows on this display would produce cells smaller than \(Int(Layout.minReadableCellSize.width))×\(Int(Layout.minReadableCellSize.height)) pt. Close some windows or move them to another display."
+                )
+                terminalApp = nil
+                pid = 0
+                return
+            }
         }
 
         managed = valid.map { Managed(window: $0, original: getFrame($0)) }
@@ -214,10 +237,14 @@ public final class WindowManager {
     }
 
     fileprivate func handleFocusChange(_ window: AXUIElement) {
-        guard isTiling, !isFocusIgnored else { return }
+        guard isTiling else { return }
         guard managed.contains(where: { CFEqual($0.window, window) }) else { return }
-        if let last = lastFocused, CFEqual(last, window) { return }
+        // Always remember the user's most recent intent — even if we're suspending right
+        // now. This way post-suspend operations (zoomMode toggle, retile + re-zoom) target
+        // the user's actual focus, not the one we last animated.
+        let isNew = !(lastFocused.map { CFEqual($0, window) } ?? false)
         lastFocused = window
+        guard !isFocusIgnored, isNew else { return }
         suspendFocus(for: 0.45)
         zoom(window)
     }
