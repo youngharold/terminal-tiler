@@ -48,13 +48,17 @@ final class WindowManager {
     private var keyMonitorLocal: Any?
     private var ignoreFocusCounter: Int = 0
     private var lastFocused: AXUIElement?
+    /// Bumped on every start()/stop() so deferred suspendFocus decrements from a previous
+    /// session can't leak across into the next one (would otherwise race with new ops).
+    private var sessionEpoch: Int = 0
 
     private var isFocusIgnored: Bool { ignoreFocusCounter > 0 }
 
     private func suspendFocus(for duration: TimeInterval) {
+        let myEpoch = sessionEpoch
         ignoreFocusCounter += 1
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.sessionEpoch == myEpoch else { return }
             self.ignoreFocusCounter = max(0, self.ignoreFocusCounter - 1)
         }
     }
@@ -88,7 +92,9 @@ final class WindowManager {
             managed.append(mw)
             subscribeDestroy(w)
         }
-        if managed.isEmpty { stop(restore: false); return }
+        // Same minimum as start(): tiling a single window is meaningless. Restore so the
+        // surviving window leaves the now-pointless tiled layout cleanly.
+        if managed.count < 2 { stop(restore: true); return }
         layoutGrid()
     }
 
@@ -160,12 +166,14 @@ final class WindowManager {
             return event
         }
 
+        sessionEpoch &+= 1
         isTiling = true
         layoutGrid()
         onStateChange?()
     }
 
     private func stop(restore: Bool) {
+        sessionEpoch &+= 1
         if restore {
             for m in managed { setFrame(m.window, to: m.original) }
         }
