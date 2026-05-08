@@ -94,13 +94,17 @@ public final class WindowManager {
             return
         }
         guard let m = managed.first(where: { CFEqual($0.window, last) }) else { return }
-        suspendFocus(for: 0.4)
-        setFrame(last, to: m.original)
+        // Bumped to 0.5s: covers Terminal's post-restore settle window which can re-raise
+        // sibling tabs on cross-display moves.
+        suspendFocus(for: 0.5)
+        // Remove from `managed` BEFORE the AX write so an in-flight focus event can't find
+        // the window in our list while we're mid-restore.
         managed.removeAll { CFEqual($0.window, last) }
         if let observer = observer, let dead = subscribedWindows.first(where: { CFEqual($0, last) }) {
             AXObserverRemoveNotification(observer, dead, kAXUIElementDestroyedNotification as CFString)
             subscribedWindows.removeAll { CFEqual($0, dead) }
         }
+        setFrame(last, to: m.original)
         lastFocused = nil
         if managed.count < 2 { stop(restore: true); return }
         layoutGrid()

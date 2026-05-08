@@ -57,7 +57,7 @@ Hotkeys are global — they fire from any app. They use `charactersIgnoringModif
 
 ## Troubleshooting
 
-- **Menu bar icon is there but tiling does nothing.** Accessibility permission is denied or hasn't been granted to *this exact build* of the app. Open System Settings → Privacy & Security → Accessibility, find Terminal Tiler, toggle it off and on. The hotkey monitor retries automatically every ~1.5s — no need to restart the app.
+- **Menu bar icon is there but tiling does nothing.** Accessibility permission isn't granted to *this exact build*. Open System Settings → Privacy & Security → Accessibility — if Terminal Tiler isn't listed, drag the app in; if it's listed but off, toggle it on. The hotkey monitor retries every ~1.5s, so you don't need to relaunch the app afterwards.
 - **`⌘⌥T` does nothing.** Same as above — global key monitoring is gated by Accessibility.
 - **Tile button shows "Too many Terminal windows".** With more than ~16 windows on a single display the grid cells become unreadable. Move some windows to another display, or close a few.
 - **One Terminal window stays tiled fullscreen after closing siblings.** This shouldn't happen — the app stops and restores when the count drops below 2. If it does, click *Stop & Restore Originals* in the menu.

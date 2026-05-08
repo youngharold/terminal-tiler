@@ -7,8 +7,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="TerminalTiler"
 APP_DIR="$APP_NAME.app"
-VERSION="0.2.11"
-BUILD="13"
+VERSION="0.2.12"
+BUILD="14"
 
 echo "==> swift build (release, universal: arm64 + x86_64)"
 swift build -c release --arch arm64 --arch x86_64

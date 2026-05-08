@@ -3,10 +3,22 @@ import ApplicationServices
 import ServiceManagement
 import TerminalTilerCore
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let manager = WindowManager()
     private var toggleHotkeyMonitor: Any?
+
+    /// True if this binary is running from a real `.app` bundle. Launch at Login via
+    /// SMAppService.mainApp is meaningless when run from `.build/release/`.
+    private var isInsideAppBundle: Bool {
+        Bundle.main.bundlePath.hasSuffix(".app")
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        // Refresh on every open — picks up Login-Items toggle changes the user made in
+        // System Settings without us getting an event.
+        rebuildMenu()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if !ensureSingleInstance() { return }
@@ -107,22 +119,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(stopRoot)
         }
 
-        let retile = NSMenuItem(title: "Return to Grid", action: #selector(retileNow), keyEquivalent: "g")
-        retile.keyEquivalentModifierMask = [.command, .option]
-        retile.target = self
-        retile.isEnabled = manager.isTiling
-        menu.addItem(retile)
+        // Tiling-only items: hide entirely when idle so the menu stays clean.
+        if manager.isTiling {
+            let retile = NSMenuItem(title: "Return to Grid", action: #selector(retileNow), keyEquivalent: "g")
+            retile.keyEquivalentModifierMask = [.command, .option]
+            retile.target = self
+            menu.addItem(retile)
 
-        let refresh = NSMenuItem(title: "Refresh Window List", action: #selector(refreshWindows), keyEquivalent: "")
-        refresh.target = self
-        refresh.isEnabled = manager.isTiling
-        menu.addItem(refresh)
+            let refresh = NSMenuItem(title: "Refresh Window List", action: #selector(refreshWindows), keyEquivalent: "")
+            refresh.target = self
+            menu.addItem(refresh)
 
-        let exclude = NSMenuItem(title: "Exclude Focused Window", action: #selector(excludeFocused), keyEquivalent: "")
-        exclude.target = self
-        exclude.isEnabled = manager.isTiling
-        exclude.toolTip = "Drop the focused Terminal window from tiling and snap it back to where it was. Useful for long-running monitors that shouldn't move."
-        menu.addItem(exclude)
+            let exclude = NSMenuItem(title: "Exclude Focused Window", action: #selector(excludeFocused), keyEquivalent: "")
+            exclude.target = self
+            exclude.toolTip = "Drop the focused Terminal window from tiling and snap it back to where it was. Useful for long-running monitors that shouldn't move."
+            menu.addItem(exclude)
+        }
 
         menu.addItem(.separator())
 
@@ -161,13 +173,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        loginItem.target = self
-        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(loginItem)
+        // Only offer Launch at Login when running from a real .app bundle — SMAppService
+        // can't register the bare `.build/release/TerminalTiler` binary.
+        if isInsideAppBundle {
+            let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+            loginItem.target = self
+            loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+            menu.addItem(loginItem)
+        }
 
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
+        menu.delegate = self
         statusItem.menu = menu
     }
 

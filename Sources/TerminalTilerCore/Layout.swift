@@ -6,7 +6,8 @@ enum Layout {
     static let minReadableCellSize = CGSize(width: 320, height: 200)
 
     /// True if a grid of `count` cells over `screen` would produce cells smaller than the
-    /// readable threshold — an unusable layout.
+    /// readable threshold — an unusable layout. `screen` is expected to be the AX *visible*
+    /// frame (menu bar / Dock excluded), not the full display rect.
     static func gridWouldBeUnreadable(count: Int, in screen: CGRect) -> Bool {
         guard count > 0 else { return false }
         let cols = Int(ceil(sqrt(Double(count))))
