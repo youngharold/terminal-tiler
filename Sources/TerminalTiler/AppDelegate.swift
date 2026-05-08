@@ -187,10 +187,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(loginItem)
         }
 
+        let about = NSMenuItem(title: "About Terminal Tiler", action: #selector(showAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         menu.delegate = self
         statusItem.menu = menu
+    }
+
+    @objc private func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .credits: NSAttributedString(
+                string: "https://github.com/youngharold/terminal-tiler",
+                attributes: [
+                    .foregroundColor: NSColor.linkColor,
+                    .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                ]
+            ),
+        ])
     }
 
     @objc private func toggleLaunchAtLogin() {
