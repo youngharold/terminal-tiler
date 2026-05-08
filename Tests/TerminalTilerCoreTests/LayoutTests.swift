@@ -132,9 +132,9 @@ final class LayoutTests: XCTestCase {
     // MARK: - gridWouldBeUnreadable()
 
     func testUnreadable_belowThreshold() {
-        // 25 windows on 1920×1080 → 5×5 → 384×216 cells → height 216 < 200 = unreadable
-        let s = CGRect(x: 0, y: 0, width: 1920, height: 1080)
-        XCTAssertTrue(Layout.gridWouldBeUnreadable(count: 25, in: s))
+        // 20 windows on 1280×800 → 5×4 → 256×200 cells → width 256 < 320 = unreadable
+        let s = CGRect(x: 0, y: 0, width: 1280, height: 800)
+        XCTAssertTrue(Layout.gridWouldBeUnreadable(count: 20, in: s))
     }
 
     func testUnreadable_aboveThreshold() {
