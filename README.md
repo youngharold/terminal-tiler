@@ -35,6 +35,7 @@ Click the grid icon in the menu bar:
 - **⌘⌥G** — return to the even grid (works from any app; doesn't conflict with vim/REPL Esc behavior in Terminal).
 - **⌘⌥⇧T** — Stop tiling and leave windows where they are (no restore).
 - **Return to Grid** / **Refresh Window List** — re-tile or re-detect windows (auto-detects most cases).
+- **Exclude Focused Window** — drop the currently-focused tile from tiling and restore its original position. Useful for log tails or monitoring panes that shouldn't move. Re-tile to bring it back.
 - **Stop Tiling** — submenu with two choices: *Restore Originals* (snap each window back to its position at the moment tiling started) or *Leave Where They Are* (just stop managing in place).
 
 ## Keybindings

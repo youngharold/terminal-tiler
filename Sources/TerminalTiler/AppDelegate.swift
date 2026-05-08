@@ -118,6 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh.isEnabled = manager.isTiling
         menu.addItem(refresh)
 
+        let exclude = NSMenuItem(title: "Exclude Focused Window", action: #selector(excludeFocused), keyEquivalent: "")
+        exclude.target = self
+        exclude.isEnabled = manager.isTiling
+        exclude.toolTip = "Drop the focused Terminal window from tiling and snap it back to where it was. Useful for long-running monitors that shouldn't move."
+        menu.addItem(exclude)
+
         menu.addItem(.separator())
 
         let zoomItem = NSMenuItem(title: "Zoom Style", action: nil, keyEquivalent: "")
@@ -187,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func stopAndLeave() { manager.stopAndLeaveInPlace() }
     @objc private func retileNow() { manager.retile() }
     @objc private func refreshWindows() { manager.refreshWindows() }
+    @objc private func excludeFocused() { manager.excludeFocused() }
     @objc private func setSideStrip() { manager.zoomMode = .sideStrip }
     @objc private func setFullScreen() { manager.zoomMode = .fullScreen }
 }

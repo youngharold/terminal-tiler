@@ -81,6 +81,25 @@ public final class WindowManager {
         lastFocused = nil
     }
 
+    /// Drop the most-recently-focused window from tiling and snap it back to its `original`
+    /// frame. The window stays open and can be re-tiled by stopping and re-starting tiling.
+    /// If fewer than 2 windows would remain, tiling stops with a restore.
+    public func excludeFocused() {
+        guard isTiling, let last = lastFocused else { return }
+        guard let m = managed.first(where: { CFEqual($0.window, last) }) else { return }
+        suspendFocus(for: 0.4)
+        setFrame(last, to: m.original)
+        managed.removeAll { CFEqual($0.window, last) }
+        if let observer = observer, let dead = subscribedWindows.first(where: { CFEqual($0, last) }) {
+            AXObserverRemoveNotification(observer, dead, kAXUIElementDestroyedNotification as CFString)
+            subscribedWindows.removeAll { CFEqual($0, dead) }
+        }
+        lastFocused = nil
+        if managed.count < 2 { stop(restore: true); return }
+        layoutGrid()
+        onStateChange?()
+    }
+
     public func refreshWindows() {
         guard isTiling, let axApp = terminalApp else { return }
         var winsRef: AnyObject?
