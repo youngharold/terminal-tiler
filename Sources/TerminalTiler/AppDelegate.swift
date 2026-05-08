@@ -60,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func registerToggleHotkey() {
+        // Idempotent: tear down any prior monitor before re-installing.
+        if let m = toggleHotkeyMonitor { NSEvent.removeMonitor(m); toggleHotkeyMonitor = nil }
         // Global key monitoring is gated by Accessibility (same TCC permission). If trust isn't
         // granted yet, addGlobalMonitor returns silently with no events ever firing. We retry
         // on a short timer until trust flips on, so users who grant later don't need to restart.
