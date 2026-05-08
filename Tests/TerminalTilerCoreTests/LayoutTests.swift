@@ -162,6 +162,31 @@ final class LayoutTests: XCTestCase {
         XCTAssertFalse(Layout.gridWouldBeUnreadable(count: 0, in: CGRect(x: 0, y: 0, width: 1, height: 1)))
     }
 
+    // MARK: - sideStripWouldBeTooThin()
+
+    func testSideStrip_oneOtherFits() {
+        let s = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        XCTAssertFalse(Layout.sideStripWouldBeTooThin(otherCount: 1, in: s))
+    }
+
+    func testSideStrip_twelveOthersAtBoundary() {
+        // 1080 / 12 = 90 (== minSideStripRowHeight). Strict less-than means 90 is acceptable.
+        let s = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        XCTAssertFalse(Layout.sideStripWouldBeTooThin(otherCount: 12, in: s))
+    }
+
+    func testSideStrip_thirteenOthersBelowThreshold() {
+        // 1080 / 13 ≈ 83 < 90 → fall back to fullScreen
+        let s = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        XCTAssertTrue(Layout.sideStripWouldBeTooThin(otherCount: 13, in: s))
+    }
+
+    func testSideStrip_zeroOthersFits() {
+        // No others = no strip = no problem.
+        let s = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        XCTAssertFalse(Layout.sideStripWouldBeTooThin(otherCount: 0, in: s))
+    }
+
     func testScreenIndex_nearestFallbackForGap() {
         // Two displays with a gap. Window center sits in the gap — should pick the nearest.
         let screens = [

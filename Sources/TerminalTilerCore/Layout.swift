@@ -5,6 +5,17 @@ enum Layout {
     /// Minimum readable Terminal cell size; layouts with cells below this should warn.
     static let minReadableCellSize = CGSize(width: 320, height: 200)
 
+    /// Side-strip rows below this height are unreadable thumbnails — zoom should fall back
+    /// to fullScreen mode rather than producing a 50-pt strip cell.
+    static let minSideStripRowHeight: CGFloat = 90
+
+    /// True if a side-strip layout with `otherCount` rows would produce rows shorter than
+    /// `minSideStripRowHeight`. Caller falls back to fullScreen zoom when this returns true.
+    static func sideStripWouldBeTooThin(otherCount: Int, in screen: CGRect) -> Bool {
+        guard otherCount > 0 else { return false }
+        return screen.height / CGFloat(otherCount) < minSideStripRowHeight
+    }
+
     /// True if a grid of `count` cells over `screen` would produce cells smaller than the
     /// readable threshold — an unusable layout. `screen` is expected to be the AX *visible*
     /// frame (menu bar / Dock excluded), not the full display rect.

@@ -323,8 +323,7 @@ public final class WindowManager {
             let others = onScreen.filter { !CFEqual($0.window, focused) }
             // Fall back to fullScreen when strip cells would be unreadably thin
             // (e.g. focusing one of 20 windows on a single display).
-            let stripRowMin: CGFloat = 90
-            if !others.isEmpty, screen.height / CGFloat(others.count) < stripRowMin {
+            if Layout.sideStripWouldBeTooThin(otherCount: others.count, in: screen) {
                 animateFrame(focusedManaged, to: screen)
                 return
             }
