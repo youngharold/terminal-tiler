@@ -158,12 +158,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let about = NSMenuItem(
+        let status = NSMenuItem(
             title: manager.isTiling ? "Tiling \(manager.windowCount) windows" : "Idle",
             action: nil, keyEquivalent: ""
         )
-        about.isEnabled = false
-        menu.addItem(about)
+        status.isEnabled = false
+        menu.addItem(status)
 
         let hint = NSMenuItem(title: "⌘⌥T toggle · ⌘⌥G return to grid · ⌘⌥⇧T stop & leave", action: nil, keyEquivalent: "")
         hint.isEnabled = false
