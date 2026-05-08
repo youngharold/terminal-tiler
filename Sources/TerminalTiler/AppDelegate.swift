@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import TerminalTilerCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!

@@ -1,18 +1,20 @@
 import AppKit
 import ApplicationServices
 
-enum ZoomMode: String {
+public enum ZoomMode: String {
     case sideStrip
     case fullScreen
 }
 
-final class WindowManager {
-    private(set) var isTiling = false
-    var onStateChange: (() -> Void)?
+public final class WindowManager {
+    public private(set) var isTiling = false
+    public var onStateChange: (() -> Void)?
 
-    var windowCount: Int { managed.count }
+    public var windowCount: Int { managed.count }
 
-    var zoomMode: ZoomMode {
+    public init() {}
+
+    public var zoomMode: ZoomMode {
         get { _zoomMode }
         set {
             _zoomMode = newValue
@@ -65,20 +67,20 @@ final class WindowManager {
 
     // MARK: - Public API
 
-    func toggle() {
+    public func toggle() {
         if isTiling { stopAndRestore() } else { start() }
     }
 
-    func stopAndRestore() { stop(restore: true) }
-    func stopAndLeaveInPlace() { stop(restore: false) }
+    public func stopAndRestore() { stop(restore: true) }
+    public func stopAndLeaveInPlace() { stop(restore: false) }
 
-    func retile() {
+    public func retile() {
         guard isTiling else { return }
         layoutGrid()
         lastFocused = nil
     }
 
-    func refreshWindows() {
+    public func refreshWindows() {
         guard isTiling, let axApp = terminalApp else { return }
         var winsRef: AnyObject?
         AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &winsRef)
@@ -198,11 +200,11 @@ final class WindowManager {
     // MARK: - Layout
 
     private func layoutGrid() {
-        let groups = Dictionary(grouping: managed, by: { screenIndex(forAX: $0.original) })
+        let groups = Dictionary(grouping: managed, by: { Layout.screenIndex(forAX: $0.original) })
         suspendFocus(for: 0.4)
         for (idx, group) in groups {
-            let screen = axVisibleFrame(for: idx)
-            let frames = computeGrid(count: group.count, in: screen)
+            let screen = Layout.axVisibleFrame(forIndex: idx)
+            let frames = Layout.grid(count: group.count, in: screen)
             for (i, m) in group.enumerated() {
                 m.slot = frames[i]
                 m.screenIdx = idx
@@ -251,9 +253,9 @@ final class WindowManager {
         // Probe the focused window's live frame ONCE (handles a manual drag to another display);
         // every other window uses its cached screenIdx from layoutGrid to avoid N AX reads.
         let liveFocused = getFrame(focused)
-        let idx = screenIndex(forAX: liveFocused)
+        let idx = Layout.screenIndex(forAX: liveFocused)
         focusedManaged.screenIdx = idx
-        let screen = axVisibleFrame(for: idx)
+        let screen = Layout.axVisibleFrame(forIndex: idx)
         let onScreen = managed.filter { $0.screenIdx == idx }
 
         switch _zoomMode {
@@ -376,65 +378,6 @@ final class WindowManager {
         }
     }
 
-    private func computeGrid(count: Int, in screen: CGRect) -> [CGRect] {
-        guard count > 0 else { return [] }
-        let cols = Int(ceil(sqrt(Double(count))))
-        let rows = Int(ceil(Double(count) / Double(cols)))
-        let cellW = screen.width / CGFloat(cols)
-        let cellH = screen.height / CGFloat(rows)
-        var frames: [CGRect] = []
-        for i in 0..<count {
-            let r = i / cols
-            let c = i % cols
-            frames.append(CGRect(
-                x: screen.minX + CGFloat(c) * cellW,
-                y: screen.minY + CGFloat(r) * cellH,
-                width: cellW,
-                height: cellH
-            ))
-        }
-        return frames
-    }
-
-    // MARK: - Coordinates
-    //
-    // AX uses origin at the TOP-LEFT of the primary display, y growing downward, in a
-    // coordinate space that spans every connected display. NSScreen uses a BOTTOM-LEFT
-    // origin (also primary-anchored) with y growing upward. The conversion is:
-    //
-    //     ax_y = primary.frame.height - ns_maxY
-    //     ax_x = ns_x  (no change)
-    //
-    // This is correct for displays in any arrangement — above, below, left, or right of
-    // primary — because it converts each screen's NS-coords frame into the same AX space.
-
-    private func axFrame(of screen: NSScreen) -> CGRect {
-        guard let primary = NSScreen.screens.first else { return screen.frame }
-        let primaryHeight = primary.frame.height
-        let ns = screen.frame
-        return CGRect(x: ns.minX, y: primaryHeight - ns.maxY, width: ns.width, height: ns.height)
-    }
-
-    private func axVisibleFrame(of screen: NSScreen) -> CGRect {
-        guard let primary = NSScreen.screens.first else { return screen.visibleFrame }
-        let primaryHeight = primary.frame.height
-        let v = screen.visibleFrame
-        return CGRect(x: v.minX, y: primaryHeight - v.maxY, width: v.width, height: v.height)
-    }
-
-    private func screenIndex(forAX axRect: CGRect) -> Int {
-        guard !NSScreen.screens.isEmpty else { return 0 }
-        let center = CGPoint(x: axRect.midX, y: axRect.midY)
-        for (i, screen) in NSScreen.screens.enumerated() {
-            if axFrame(of: screen).contains(center) { return i }
-        }
-        return 0
-    }
-
-    private func axVisibleFrame(for screenIndex: Int) -> CGRect {
-        guard screenIndex < NSScreen.screens.count else { return .zero }
-        return axVisibleFrame(of: NSScreen.screens[screenIndex])
-    }
 }
 
 private func axCallback(

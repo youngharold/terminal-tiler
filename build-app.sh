@@ -8,8 +8,8 @@ cd "$(dirname "$0")"
 APP_NAME="TerminalTiler"
 APP_DIR="$APP_NAME.app"
 BIN_PATH=".build/release/$APP_NAME"
-VERSION="0.2.3"
-BUILD="5"
+VERSION="0.2.4"
+BUILD="6"
 
 echo "==> swift build (release)"
 swift build -c release
