@@ -15,9 +15,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // Refresh on every open — picks up Login-Items toggle changes the user made in
-        // System Settings without us getting an event.
-        rebuildMenu()
+        // Update only items whose state can change OUTSIDE our control (e.g. user toggled
+        // Login Items in System Settings). Don't rebuild the whole menu here — that would
+        // replace `statusItem.menu` while we're inside this menu's own delegate callback.
+        if let loginItem = menu.items.first(where: { $0.action == #selector(toggleLaunchAtLogin) }) {
+            loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

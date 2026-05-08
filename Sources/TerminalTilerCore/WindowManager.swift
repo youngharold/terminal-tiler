@@ -12,7 +12,19 @@ public final class WindowManager {
 
     public var windowCount: Int { managed.count }
 
-    public init() {}
+    public init() {
+        // One-time migration of the pre-namespaced UserDefaults key (v0.2.6 and earlier
+        // wrote to plain "zoomMode"). Move it into the namespaced key on first launch
+        // after upgrade so users don't silently lose their preference.
+        let defaults = UserDefaults.standard
+        let legacyKey = "zoomMode"
+        if let legacy = defaults.string(forKey: legacyKey),
+           defaults.string(forKey: Self.zoomModeKey) == nil {
+            defaults.set(legacy, forKey: Self.zoomModeKey)
+            defaults.removeObject(forKey: legacyKey)
+        }
+        _zoomMode = ZoomMode(rawValue: defaults.string(forKey: Self.zoomModeKey) ?? "") ?? .sideStrip
+    }
 
     public var zoomMode: ZoomMode {
         get { _zoomMode }
@@ -29,7 +41,7 @@ public final class WindowManager {
         }
     }
     private static let zoomModeKey = "TerminalTiler.zoomMode"
-    private var _zoomMode: ZoomMode = ZoomMode(rawValue: UserDefaults.standard.string(forKey: WindowManager.zoomModeKey) ?? "") ?? .sideStrip
+    private var _zoomMode: ZoomMode = .sideStrip
 
     private final class Managed {
         let window: AXUIElement
