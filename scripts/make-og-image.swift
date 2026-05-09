@@ -117,15 +117,15 @@ draw("TERMUSHER",
      at: CGPoint(x: 60, y: H - 130),
      size: 64, color: .white, weight: .heavy, kern: -1.5)
 
-draw("vibe-coded by Claude Code",
+draw("seats your terminal windows",
      at: CGPoint(x: 64, y: H - 175),
      size: 26, color: NSColor(white: 0.78, alpha: 1.0), weight: .medium)
 
-draw("Every line of Swift in this repo was written by an LLM.",
+draw("Tile · zoom · drag-to-reorder · auto-return on idle",
      at: CGPoint(x: 64, y: 230),
      size: 22, color: NSColor(white: 0.55, alpha: 1.0))
 
-draw("1,000 LOC · 24 tests · GitHub Actions CI · universal binary",
+draw("For developers running multiple Claude Code / Codex / Cursor sessions.",
      at: CGPoint(x: 64, y: 195),
      size: 18, color: NSColor(white: 0.45, alpha: 1.0))
 

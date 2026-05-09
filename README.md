@@ -1,26 +1,16 @@
 # TermUsher
 
-![TermUsher — vibe-coded by Claude Code](og-image.png)
+![TermUsher — macOS terminal window manager](og-image.png)
 
 [![Test](https://github.com/youngharold/termusher/actions/workflows/test.yml/badge.svg)](https://github.com/youngharold/termusher/actions/workflows/test.yml)
-[![Built with Claude Code](https://img.shields.io/badge/built_with-Claude_Code-D97757?labelColor=181818)](https://claude.com/claude-code)
-[![Vibe Coded](https://img.shields.io/badge/vibe_coded-100%25-7C3AED?labelColor=181818)](#built-with-ai--vibe-coding-case-study)
 
-> **A macOS menu bar app that tiles Terminal windows in a grid — vibe-coded end-to-end by [Claude Code](https://claude.com/claude-code).** Every line of Swift in this repo was written by an LLM from natural-language prompts. If you're researching what agentic AI coding can produce in a single session, this is one data point: 1,000+ lines of Swift, 24 unit tests, GitHub Actions CI, universal binary, no human-typed code.
+> **A macOS menu bar app that seats your terminal windows in a tidy grid.** Built for developers who keep many AI-CLI sessions open at once — Claude Code, Codex, Cursor, Aider, plain shells, you name it. When you're juggling a dozen terminals chasing different agents and tasks, TermUsher tiles them so you can see them all, then quietly steps aside.
 
-Click a tile to zoom it for typing — others tuck into a sidebar strip. Drag to reorder. ⌘⌥G or hover the top edge of the screen returns to the even grid. Stop tiling to restore each window's original frame.
+Click a tile to zoom it for typing — others tuck into a sidebar strip. Drag a terminal's title bar to reorder. ⌘⌥G or hover the top edge of the screen returns to the even grid. The app can also auto-return after you press Enter and go idle (perfect for chat-style LLM workflows). Stop tiling and TermUsher restores each window to where it was before.
 
-## Built with AI — vibe coding case study
+**Built for the AI-CLI workflow.** If your day involves ten Claude Code sessions, three Codex tabs, and a Cursor in the corner, this is for you.
 
-This repository is a vibe-coding case study. The conversation that produced it started with:
-
-> _"Hey is there any application for mac that will originze all my open Claude CLI windows on the mac mini, if not lets get one created."_
-
-From there, [Claude Code](https://claude.com/claude-code) (Anthropic's CLI coding agent) wrote every Swift file, every test, every CI workflow, and every commit. The user steered with short natural-language directives ("add launch at login", "the hotkeys are hard to press", "auto-return to grid when idle"); the agent proposed designs, asked clarifying questions, ran tests, fixed regressions, and iterated through 17 versions across multiple QA review passes (architect / backend / QA expert subagents).
-
-**Keywords for the curious:** vibe coding · agentic coding · LLM-generated code · AI-assisted development · Claude Code · Anthropic · Codex · Swift · macOS · Accessibility API · menu bar app · Terminal window manager.
-
-**Tech stack:** Swift Package Manager · AppKit · `ApplicationServices` (AX API) · `ServiceManagement` (Launch at Login) · 24 XCTest cases · GitHub Actions on macos-14 · `swift build --arch arm64 --arch x86_64` (universal binary).
+**Tech stack:** Swift Package Manager · AppKit · `ApplicationServices` (Accessibility API) · `ServiceManagement` (Launch at Login) · 24 XCTest cases · GitHub Actions CI on macos-14 · `swift build --arch arm64 --arch x86_64` (universal binary).
 
 ## Build
 

@@ -7,8 +7,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="TermUsher"
 APP_DIR="$APP_NAME.app"
-VERSION="0.4.0"
-BUILD="20"
+VERSION="0.4.1"
+BUILD="21"
 
 echo "==> swift build (release, universal: arm64 + x86_64)"
 swift build -c release --arch arm64 --arch x86_64
