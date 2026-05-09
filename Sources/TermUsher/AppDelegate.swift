@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 import ServiceManagement
-import TerminalTilerCore
+import TermUsherCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -46,13 +46,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func ensureSingleInstance() -> Bool {
-        let myId = Bundle.main.bundleIdentifier ?? "com.youngharold.terminal-tiler"
+        let myId = Bundle.main.bundleIdentifier ?? "com.youngharold.termusher"
         let myPID = ProcessInfo.processInfo.processIdentifier
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: myId)
             .filter { $0.processIdentifier != myPID }
         if others.isEmpty { return true }
         let alert = NSAlert()
-        alert.messageText = "Terminal Tiler is already running"
+        alert.messageText = "TermUsher is already running"
         alert.informativeText = "Quit the existing instance from the menu bar before launching another."
         alert.runModal()
         NSApp.terminate(nil)
@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func rebuildMenu() {
         if let button = statusItem.button {
             let symbol = manager.isTiling ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2"
-            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Terminal Tiler")
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "TermUsher")
         }
 
         let menu = NSMenu()
@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         // Only offer Launch at Login when running from a real .app bundle — SMAppService
-        // can't register the bare `.build/release/TerminalTiler` binary.
+        // can't register the bare `.build/release/TermUsher` binary.
         if isInsideAppBundle {
             let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
             loginItem.target = self
@@ -203,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(loginItem)
         }
 
-        let about = NSMenuItem(title: "About Terminal Tiler", action: #selector(showAbout), keyEquivalent: "")
+        let about = NSMenuItem(title: "About TermUsher", action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
 
@@ -217,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(options: [
             .credits: NSAttributedString(
-                string: "https://github.com/youngharold/terminal-tiler",
+                string: "https://github.com/youngharold/termusher",
                 attributes: [
                     .foregroundColor: NSColor.linkColor,
                     .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
@@ -237,18 +237,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             let alert = NSAlert()
             alert.messageText = "Couldn't change Launch at Login setting"
-            alert.informativeText = "\(error.localizedDescription)\n\nMake sure Terminal Tiler is in /Applications and is allowed in System Settings → General → Login Items."
+            alert.informativeText = "\(error.localizedDescription)\n\nMake sure TermUsher is in /Applications and is allowed in System Settings → General → Login Items."
             alert.runModal()
             rebuildMenu()
             return
         }
-        // .requiresApproval: registration was accepted but the user must enable Terminal Tiler
+        // .requiresApproval: registration was accepted but the user must enable TermUsher
         // in System Settings → General → Login Items. Surface that explicitly so they don't
         // think the toggle is broken.
         if service.status == .requiresApproval {
             let alert = NSAlert()
             alert.messageText = "Approval needed in System Settings"
-            alert.informativeText = "Terminal Tiler is registered as a login item but needs your approval. Open System Settings → General → Login Items and toggle Terminal Tiler on."
+            alert.informativeText = "TermUsher is registered as a login item but needs your approval. Open System Settings → General → Login Items and toggle TermUsher on."
             alert.addButton(withTitle: "Open System Settings")
             alert.addButton(withTitle: "Later")
             if alert.runModal() == .alertFirstButtonReturn,

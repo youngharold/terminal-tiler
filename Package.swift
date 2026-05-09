@@ -2,26 +2,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "TerminalTiler",
+    name: "TermUsher",
     platforms: [.macOS(.v13)],
     products: [
-        .library(name: "TerminalTilerCore", targets: ["TerminalTilerCore"]),
-        .executable(name: "TerminalTiler", targets: ["TerminalTiler"]),
+        .library(name: "TermUsherCore", targets: ["TermUsherCore"]),
+        .executable(name: "TermUsher", targets: ["TermUsher"]),
     ],
     targets: [
         .target(
-            name: "TerminalTilerCore",
-            path: "Sources/TerminalTilerCore"
+            name: "TermUsherCore",
+            path: "Sources/TermUsherCore"
         ),
         .executableTarget(
-            name: "TerminalTiler",
-            dependencies: ["TerminalTilerCore"],
-            path: "Sources/TerminalTiler"
+            name: "TermUsher",
+            dependencies: ["TermUsherCore"],
+            path: "Sources/TermUsher"
         ),
         .testTarget(
-            name: "TerminalTilerCoreTests",
-            dependencies: ["TerminalTilerCore"],
-            path: "Tests/TerminalTilerCoreTests"
+            name: "TermUsherCoreTests",
+            dependencies: ["TermUsherCore"],
+            path: "Tests/TermUsherCoreTests"
         ),
     ]
 )

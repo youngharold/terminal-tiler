@@ -55,12 +55,12 @@ public final class WindowManager {
             }
         }
     }
-    private static let zoomModeKey = "TerminalTiler.zoomMode"
-    private static let idleReturnKey = "TerminalTiler.autoReturnIdleEnabled"
-    private static let idleReturnSecondsKey = "TerminalTiler.autoReturnIdleSeconds"
-    private static let hoverReturnKey = "TerminalTiler.autoReturnHoverEnabled"
-    private static let sendReturnKey = "TerminalTiler.autoReturnAfterSendEnabled"
-    private static let sendReturnSecondsKey = "TerminalTiler.autoReturnAfterSendSeconds"
+    private static let zoomModeKey = "TermUsher.zoomMode"
+    private static let idleReturnKey = "TermUsher.autoReturnIdleEnabled"
+    private static let idleReturnSecondsKey = "TermUsher.autoReturnIdleSeconds"
+    private static let hoverReturnKey = "TermUsher.autoReturnHoverEnabled"
+    private static let sendReturnKey = "TermUsher.autoReturnAfterSendEnabled"
+    private static let sendReturnSecondsKey = "TermUsher.autoReturnAfterSendSeconds"
 
     private var _zoomMode: ZoomMode = .sideStrip
 
@@ -293,7 +293,7 @@ public final class WindowManager {
             NSLog("AXObserverCreate failed: \(result.rawValue)")
             showAlert(
                 title: "Couldn't observe Terminal",
-                body: "AXObserverCreate failed (\(result.rawValue)). Try restarting Terminal.app and Terminal Tiler."
+                body: "AXObserverCreate failed (\(result.rawValue)). Try restarting Terminal.app and TermUsher."
             )
             for m in managed { setFrame(m.window, to: m.original) }
             managed = []
@@ -598,7 +598,7 @@ public final class WindowManager {
     private func showAccessibilityAlert() {
         let alert = NSAlert()
         alert.messageText = "Accessibility access required"
-        alert.informativeText = "Terminal Tiler needs Accessibility permission to read and move Terminal windows. Grant access in System Settings → Privacy & Security → Accessibility, then click Tile again."
+        alert.informativeText = "TermUsher needs Accessibility permission to read and move Terminal windows. Grant access in System Settings → Privacy & Security → Accessibility, then click Tile again."
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         let response = alert.runModal()

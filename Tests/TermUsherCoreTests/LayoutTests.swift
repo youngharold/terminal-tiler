@@ -1,5 +1,5 @@
 import XCTest
-@testable import TerminalTilerCore
+@testable import TermUsherCore
 
 final class LayoutTests: XCTestCase {
 

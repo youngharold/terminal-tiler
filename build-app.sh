@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Build TerminalTiler.app bundle from the SPM binary.
+# Build TermUsher.app bundle from the SPM binary.
 # Run from project root.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP_NAME="TerminalTiler"
+APP_NAME="TermUsher"
 APP_DIR="$APP_NAME.app"
-VERSION="0.3.0"
-BUILD="19"
+VERSION="0.4.0"
+BUILD="20"
 
 echo "==> swift build (release, universal: arm64 + x86_64)"
 swift build -c release --arch arm64 --arch x86_64
@@ -37,9 +37,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleName</key>
     <string>$APP_NAME</string>
     <key>CFBundleDisplayName</key>
-    <string>Terminal Tiler</string>
+    <string>TermUsher</string>
     <key>CFBundleIdentifier</key>
-    <string>com.youngharold.terminal-tiler</string>
+    <string>com.youngharold.termusher</string>
     <key>CFBundleVersion</key>
     <string>$BUILD</string>
     <key>CFBundleShortVersionString</key>

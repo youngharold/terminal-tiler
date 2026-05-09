@@ -1,6 +1,8 @@
-# Terminal Tiler
+# TermUsher
 
-[![Test](https://github.com/youngharold/terminal-tiler/actions/workflows/test.yml/badge.svg)](https://github.com/youngharold/terminal-tiler/actions/workflows/test.yml)
+![TermUsher — vibe-coded by Claude Code](og-image.png)
+
+[![Test](https://github.com/youngharold/termusher/actions/workflows/test.yml/badge.svg)](https://github.com/youngharold/termusher/actions/workflows/test.yml)
 [![Built with Claude Code](https://img.shields.io/badge/built_with-Claude_Code-D97757?labelColor=181818)](https://claude.com/claude-code)
 [![Vibe Coded](https://img.shields.io/badge/vibe_coded-100%25-7C3AED?labelColor=181818)](#built-with-ai--vibe-coding-case-study)
 
@@ -26,13 +28,13 @@ From there, [Claude Code](https://claude.com/claude-code) (Anthropic's CLI codin
 ./build-app.sh
 ```
 
-Produces `TerminalTiler.app` in the project root.
+Produces `TermUsher.app` in the project root.
 
 ## Install
 
 ```sh
-cp -R TerminalTiler.app /Applications/
-open /Applications/TerminalTiler.app
+cp -R TermUsher.app /Applications/
+open /Applications/TermUsher.app
 ```
 
 On first launch macOS will prompt for **Accessibility permission**. Grant it in System Settings → Privacy & Security → Accessibility, then re-launch.
@@ -80,7 +82,7 @@ All three are off by default. Enable any combination.
 
 ## Drag to reorder
 
-While tiled, drag a Terminal window's title bar to move it. On release, Terminal Tiler snaps it into the closest grid slot and swaps with whatever was there. Order persists for the session — restarting tiling resets to the original order.
+While tiled, drag a Terminal window's title bar to move it. On release, TermUsher snaps it into the closest grid slot and swaps with whatever was there. Order persists for the session — restarting tiling resets to the original order.
 
 ## Notes
 
@@ -91,7 +93,7 @@ While tiled, drag a Terminal window's title bar to move it. On release, Terminal
 
 ## Troubleshooting
 
-- **Menu bar icon is there but tiling does nothing.** Accessibility permission isn't granted to *this exact build*. Open System Settings → Privacy & Security → Accessibility — if Terminal Tiler isn't listed, drag the app in; if it's listed but off, toggle it on. The hotkey monitor retries every ~1.5s, so you don't need to relaunch the app afterwards.
+- **Menu bar icon is there but tiling does nothing.** Accessibility permission isn't granted to *this exact build*. Open System Settings → Privacy & Security → Accessibility — if TermUsher isn't listed, drag the app in; if it's listed but off, toggle it on. The hotkey monitor retries every ~1.5s, so you don't need to relaunch the app afterwards.
 - **`⌘⌥T` does nothing.** Same as above — global key monitoring is gated by Accessibility.
 - **Tile button shows "Too many Terminal windows".** With more than ~16 windows on a single display the grid cells become unreadable. Move some windows to another display, or close a few.
 - **One Terminal window stays tiled fullscreen after closing siblings.** This shouldn't happen — the app stops and restores when the count drops below 2. If it does, click *Stop & Restore Originals* in the menu.
