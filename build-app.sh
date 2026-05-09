@@ -7,8 +7,8 @@ cd "$(dirname "$0")"
 
 APP_NAME="TermUsher"
 APP_DIR="$APP_NAME.app"
-VERSION="0.4.2"
-BUILD="22"
+VERSION="0.4.3"
+BUILD="23"
 
 echo "==> swift build (release, universal: arm64 + x86_64)"
 swift build -c release --arch arm64 --arch x86_64
@@ -60,7 +60,21 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "==> Codesigning ad-hoc"
-codesign --force --deep --sign - "$APP_DIR"
+# Sign with the stable self-signed identity if it's set up. The stable identity
+# makes macOS TCC (Accessibility, Login Items) keep its grant across rebuilds —
+# without it, every new build looks like a "different app" to macOS and you have
+# to re-grant Accessibility every time. Run ./scripts/setup-codesigning.sh once
+# (plus the sudo trust step it prints) to enable.
+#
+# We check for the cert by certificate name, not `find-identity -v` — the latter
+# is too conservative about self-signed identities even when they sign correctly.
+SIGN_IDENTITY="TermUsher Self-Signed"
+if security find-certificate -c "$SIGN_IDENTITY" >/dev/null 2>&1; then
+    echo "==> Codesigning with stable identity: $SIGN_IDENTITY"
+    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR"
+else
+    echo "==> Codesigning ad-hoc (run ./scripts/setup-codesigning.sh for stable signing)"
+    codesign --force --deep --sign - "$APP_DIR"
+fi
 
 echo "==> Done: $(pwd)/$APP_DIR"
