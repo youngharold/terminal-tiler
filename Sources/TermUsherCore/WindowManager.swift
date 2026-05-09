@@ -692,6 +692,50 @@ public final class WindowManager {
                     height: start.height + (target.height - start.height) * eased
                 )
                 self.setFrame(m.window, to: f, settle: isFinal)
+                // After the final settle: Terminal can silently round window dimensions UP
+                // to match its profile's rows×cols (e.g., a Claude Code profile may refuse
+                // to be shorter than ~525pt). Detect that bounce-back and shift the window
+                // toward the visible edge so its outer frame stays inside the screen — it
+                // may visually overlap a sibling row, but it won't overlap the Dock or
+                // menu bar.
+                if isFinal {
+                    self.clampToVisible(m)
+                }
+            }
+        }
+    }
+
+    /// Shift `m.window` so it sits inside its screen's visible frame, even when Terminal
+    /// has enforced a min size that exceeds our requested cell. Pure position adjustment;
+    /// we don't try to fight Terminal's size — that's a Terminal-profile preference.
+    private func clampToVisible(_ m: Managed) {
+        let actual = getFrame(m.window)
+        let visible = Layout.axVisibleFrame(forIndex: m.screenIdx)
+        guard visible.width > 0, visible.height > 0 else { return }
+        let visibleBottom = visible.minY + visible.height
+        let visibleRight = visible.minX + visible.width
+        var newPos = actual.origin
+        var changed = false
+        if actual.maxY > visibleBottom + 1 {
+            newPos.y = max(visible.minY, visibleBottom - actual.height)
+            changed = true
+        }
+        if actual.minY < visible.minY - 1 {
+            newPos.y = visible.minY
+            changed = true
+        }
+        if actual.maxX > visibleRight + 1 {
+            newPos.x = max(visible.minX, visibleRight - actual.width)
+            changed = true
+        }
+        if actual.minX < visible.minX - 1 {
+            newPos.x = visible.minX
+            changed = true
+        }
+        if changed {
+            var pos = newPos
+            if let v = AXValueCreate(.cgPoint, &pos) {
+                AXUIElementSetAttributeValue(m.window, kAXPositionAttribute as CFString, v)
             }
         }
     }
